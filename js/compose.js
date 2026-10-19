@@ -92,11 +92,21 @@ function drawBlurBg(c, F, f) {
   c.restore();
 }
 
+// クリップの映像を置く位置。画面に収めた位置（fit）に、ユーザーが動かした位置・大きさ（clip.tf）を足す
+// tf: { s: 拡大率（1 = 収めた大きさ）, x, y: 画面の中心からのずれ（画面の幅・高さに対する割合） }
+export function clipRect(F, fw, fh, clip) {
+  const r = fitRect(F, fw, fh, clip.fit);
+  const t = clip.tf;
+  if (!t) return r;
+  const w = r.w * t.s, h = r.h * t.s;
+  return { x: F.width / 2 + t.x * F.width - w / 2, y: F.height / 2 + t.y * F.height - h / 2, w, h };
+}
+
 // f: { w, h, draw(ctx, x, y, w, h) } … 素材のフレーム
 function drawClipFrame(c, p, x, f, t) {
   const F = p.frame, clip = x.clip;
-  const r = fitRect(F, f.w, f.h, clip.fit);
-  if (p.bg && p.bg.type === 'blur' && (r.w < F.width - 1 || r.h < F.height - 1)) drawBlurBg(c, F, f);
+  const r = clipRect(F, f.w, f.h, clip);
+  if (p.bg && p.bg.type === 'blur' && (r.x > 0.5 || r.y > 0.5 || r.x + r.w < F.width - 0.5 || r.y + r.h < F.height - 0.5)) drawBlurBg(c, F, f);
   c.save();
   const m = motionAt(clip, Math.min(1, Math.max(0, (t - x.start) / Math.max(0.01, x.end - x.start))));
   if (m) {

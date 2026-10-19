@@ -424,10 +424,13 @@ function draw() {
       pctx.strokeRect(-b.w / 2, -b.h / 2, b.w, b.h);
       pctx.restore();
     }
-    if (S.guideX) {
+    if (S.guideX || S.guideY) {
       pctx.strokeStyle = 'rgba(255,214,10,.9)';
       pctx.lineWidth = 1.5;
-      pctx.beginPath(); pctx.moveTo(W / 2, 0); pctx.lineTo(W / 2, H); pctx.stroke();
+      pctx.beginPath();
+      if (S.guideX) { pctx.moveTo(W / 2, 0); pctx.lineTo(W / 2, H); }
+      if (S.guideY) { pctx.moveTo(0, H / 2); pctx.lineTo(W, H / 2); }
+      pctx.stroke();
     }
   }
 }
@@ -929,6 +932,7 @@ function renderCtxbar() {
     bar.append(
       h('button', { class: 'btn-accent', onclick: () => openAfx('main') }, '🎚 音声補正'),
       h('button', { onclick: () => openPanel('speed') }, '速度・クリップ'),
+      item.tf ? h('button', { onclick: () => { delete item.tf; commit(); renderCtxbar(); requestDraw(); } }, '枠に合わせる') : null,
       h('button', { onclick: () => openPanel('color') }, 'フィルター・動き'),
       h('button', { onclick: () => splitClip(id) }, '分割'),
       ...clipMergeButtons(id),
@@ -1078,6 +1082,7 @@ stage.addEventListener('pointerdown', (e) => {
     stageDrag.pinch = {
       d0: Math.hypot(a.x - b.x, a.y - b.y), m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
       size: t?.size, scale: t?.scale, pos: t ? { x: t.x, y: t.y } : null, crop: { ...S.proj.crop },
+      tf: stageDrag.clip ? { ...clipTf(stageDrag.clip) } : null,
     };
     return;
   }
@@ -1122,9 +1127,24 @@ stage.addEventListener('pointerdown', (e) => {
     stageDrag = { type: hitKind, target: hit, x: e.clientX, y: e.clientY, o: { x: hit.x, y: hit.y }, r, moved: false, wasSel };
     requestDraw();
   } else {
-    stageDrag = { type: 'none', x: e.clientX, y: e.clientY, moved: false };
+    // 何もないところ: 動かせばメインの動画（再生位置のクリップ）を動かす。動かさずに離せば再生／一時停止
+    const cx = S.proj.clips.length ? clipAt(S.proj, S.t) : null;
+    stageDrag = { type: 'none', x: e.clientX, y: e.clientY, moved: false, r, clip: cx && cx.clip, o: cx ? { ...clipTf(cx.clip) } : null };
   }
 });
+const clipTf = (c) => c.tf || { s: 1, x: 0, y: 0 };
+// プレビュー上の移動量（画面の割合）を、画面（frame）の割合に直す（切り抜きをしているとき用）
+const toFrameX = (v) => v * S.proj.crop.w, toFrameY = (v) => v * S.proj.crop.h;
+// メインの動画を動かし始めたら、そのクリップを選ぶ（外枠と操作ボタンが出る）
+function beginVideoMove(d) {
+  d.type = 'video';
+  if (!(S.sel && S.sel.kind === 'video' && S.sel.id === d.clip.id)) { if (S.panel) closePanel(true); select('video', d.clip.id); }
+}
+function setVideoPos(c, x, y) {
+  S.guideX = Math.abs(x) < 0.012; if (S.guideX) x = 0;
+  S.guideY = Math.abs(y) < 0.012; if (S.guideY) y = 0;
+  c.tf = { ...clipTf(c), x: clamp(x, -1.5, 1.5), y: clamp(y, -1.5, 1.5) };
+}
 stage.addEventListener('pointermove', (e) => {
   if (!pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1144,6 +1164,12 @@ stage.addEventListener('pointermove', (e) => {
     }
     if (d.type === 'text' || d.type === 'overlay') syncKf(d.target);
     else if (d.type === 'crop') scaleCrop(d.pinch.crop, 1 / k);
+    else if ((d.type === 'none' || d.type === 'video') && d.clip && d.pinch.tf && !cropMode()) {
+      if (d.type === 'none') beginVideoMove(d);
+      const t0 = d.pinch.tf;
+      setVideoPos(d.clip, t0.x + toFrameX(mx / d.r.width), t0.y + toFrameY(my / d.r.height));
+      d.clip.tf.s = clamp(t0.s * k, 0.1, 10);
+    }
     requestDraw();
     return;
   }
@@ -1157,6 +1183,10 @@ stage.addEventListener('pointermove', (e) => {
     d.target.x = clamp(x, -0.2, 1.2);
     d.target.y = clamp(d.o.y + dy / d.r.height, -0.2, 1.2);
     syncKf(d.target);
+    requestDraw();
+  } else if ((d.type === 'none' || d.type === 'video') && d.clip && d.o) {
+    if (d.type === 'none') beginVideoMove(d);
+    setVideoPos(d.clip, d.o.x + toFrameX(dx / d.r.width), d.o.y + toFrameY(dy / d.r.height));
     requestDraw();
   } else if (d.type === 'crop') {
     const c = S.proj.crop;
@@ -1177,17 +1207,19 @@ const stageUp = (e) => {
       d.x = p.x; d.y = p.y;
       if (d.target) d.o = { x: d.target.x, y: d.target.y };
       else if (d.type === 'crop') d.o = { ...S.proj.crop };
+      else if (d.clip) d.o = { ...clipTf(d.clip) };
       delete d.pinch;
     }
     return;
   }
   stageDrag = null;
   S.guideX = false;
+  S.guideY = false;
   // 指を離してから少しのあいだ外枠を残す
   clearTimeout(touchTimer);
   touchTimer = setTimeout(() => { S.stageTouch = false; updateFrameOutline(); }, 700);
   if (!d) return;
-  if (d.moved) { commit(); if (d.type === 'crop') layoutPreview(); refreshPanelValues(); requestDraw(); return; }
+  if (d.moved) { commit(); if (d.type === 'crop') layoutPreview(); if (d.type === 'video') renderCtxbar(); refreshPanelValues(); requestDraw(); return; }
   if (e.type === 'pointercancel') return;
   if ((d.type === 'text' || d.type === 'overlay') && d.wasSel && S.panel !== 'item') openItemPanel(d.type, d.target.id);
   else if (d.type === 'none' && (!S.panel || S.panel === 'audio')) { S.playing ? pause() : play(); }
@@ -1642,6 +1674,8 @@ function setRatio(key) {
   p.frame.width = f.width;
   p.frame.height = f.height;
   p.crop = { aspect: 'orig', x: 0, y: 0, w: 1, h: 1 };
+  // 比率を変えたら、動画は外枠からはみ出ない大きさ（全体を表示）に戻す
+  for (const c of p.clips) { delete c.tf; c.fit = 'contain'; }
   layoutPreview();
 }
 function buildRatio(body) {
