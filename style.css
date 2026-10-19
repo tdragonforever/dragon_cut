@@ -275,3 +275,5 @@ input[type=range] { accent-color: #7a8bff; }
 .howto-os { margin: 12px 0 2px; font-size: 14px; }
 .share-ico { display: inline-flex; vertical-align: -3px; }
 .share-ico svg { width: 17px; height: 17px; fill: none; stroke: var(--accent-text); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.logo-box { display: flex; flex-direction: column; gap: 3px; }
+.ver { font-size: 10px; color: var(--muted); letter-spacing: .2px; padding-left: 40px; font-variant-numeric: tabular-nums; }

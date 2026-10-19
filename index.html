@@ -15,6 +15,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <title>DraCut</title>
 <link rel="stylesheet" href="style.css">
+<script src="js/version.js"></script>
 </head>
 <body>
 <main id="app">
@@ -22,6 +23,7 @@
   <!-- 最初の画面 -->
   <section id="start" class="screen">
     <header class="bar">
+      <div class="logo-box">
       <h1 class="logo" aria-label="DraCut">
         <svg class="logo-mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true">
   <defs>
@@ -42,6 +44,8 @@
 </svg>
         <span class="logo-t">Dra<b>Cut</b></span>
       </h1>
+      <div class="ver" id="verInfo"></div>
+      </div>
       <button class="pill" id="backToEdit" hidden>編集に戻る ›</button>
     </header>
     <label class="pick">

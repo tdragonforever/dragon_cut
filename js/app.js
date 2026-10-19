@@ -3086,6 +3086,8 @@ window.addEventListener('resize', () => { if (S.proj) { layoutPreview(); renderT
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 addFontCss();
 renderSavedList();
+// バージョン表示（更新が反映されているかの確認用）
+{ const v = globalThis.DRACUT_VERSION; if (v) $('verInfo').textContent = `ver ${v.ver}・${v.updated} 更新`; }
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
