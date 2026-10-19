@@ -1,5 +1,6 @@
 // オフラインでも使えるようにするための Service Worker
 // アプリ本体: ネット優先（更新がすぐ反映される）、つながらなければキャッシュを使う
+// ブラウザの一時保存（GitHub Pages は10分）を使うと新旧のファイルが混ざるので、毎回サーバーに確かめる（変わっていなければすぐ返る）
 // フォント: キャッシュ優先（一度使ったフォントはオフラインでも使える）
 importScripts('js/version.js');
 const APP = 'app-' + self.DRACUT_VERSION.ver;
@@ -8,7 +9,7 @@ const SHELL = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'icon-18
   'js/app.js', 'js/project.js', 'js/render.js', 'js/fonts.js', 'js/audio.js', 'js/media.js', 'js/dsp.js', 'js/fx-worklet.js', 'js/fx-worker.js', 'js/gl.js', 'js/compose.js', 'js/store.js', 'js/version.js', 'js/cutout.js', 'js/vendor/mediabunny.min.mjs'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(APP).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(APP).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== APP && k !== FONTS).map((k) => caches.delete(k))))
@@ -29,7 +30,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (url.origin !== location.origin) return;
-  e.respondWith(fetch(req).then((res) => {
+  e.respondWith(fetch(req, { cache: 'no-cache' }).then((res) => {
     if (res.ok) { const copy = res.clone(); caches.open(APP).then((c) => c.put(req, copy)); }
     return res;
   }).catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || caches.match('index.html'))));
