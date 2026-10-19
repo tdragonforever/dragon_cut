@@ -65,7 +65,8 @@ button:disabled { opacity: .4; }
 
 .clip { position: absolute; border-radius: 6px; overflow: visible; font-size: 11px; line-height: 1.2; color: #fff;
   border: 1.5px solid transparent; touch-action: pan-x pan-y; user-select: none; -webkit-user-select: none; }
-.clip .body { position: absolute; inset: 0; border-radius: 5px; overflow: hidden; padding: 3px 6px; white-space: nowrap; text-overflow: ellipsis; }
+.clip .body { position: absolute; inset: 0; border-radius: 5px; overflow: hidden; padding: 3px 0; white-space: nowrap; text-overflow: ellipsis; }
+.clip .label { padding: 0 6px; display: inline-block; }
 .clip.video .body { padding: 0; background: var(--c-video); }
 .clip.text .body { background: var(--c-text); }
 .clip.audio .body { background: var(--c-audio); }
@@ -179,8 +180,9 @@ details summary { font-size: 13px; color: var(--accent-text); padding: 6px 0; }
 input[type=range] { accent-color: #7a8bff; }
 
 /* ---- 重ねる素材 ---- */
-.clip.overlay .body { background: #1f7a7a; padding-left: 44px; }
-.clip .ov-thumb { position: absolute; left: 0; top: 0; height: 100%; width: 40px; object-fit: cover; opacity: .9; }
+.clip.overlay .body { background: #1f7a7a; padding-left: 0; }
+.clip.overlay .label { margin-left: 44px; }
+.clip .ov-thumb { position: absolute; left: 0; top: 0; height: 100%; width: 40px; max-width: 100%; object-fit: cover; opacity: .9; }
 .stage video.ov-el { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; }
 
 /* ---- 複数クリップ ---- */

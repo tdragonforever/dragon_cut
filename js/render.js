@@ -257,10 +257,14 @@ function roundRect(ctx, x, y, w, h, r) {
 // --- 重ねる画像・動画 ---------------------------------------------------------
 
 // 画面上の位置と大きさ（中心・幅・高さ・回転）。scale は出力の幅に対する割合
+// w, h は表示する枠の大きさ、iw, ih は画像そのものの大きさ。
+// 円のときは短い辺に合わせた真円にし、画像は中央を円で切り抜く（縦長・横長でも楕円にならない）
 export function overlayRect(ov, W, H, srcW, srcH) {
-  const w = ov.scale * W;
-  const h = (w * srcH) / Math.max(1, srcW);
-  return { cx: ov.x * W, cy: ov.y * H, w, h, rot: (ov.rot * Math.PI) / 180 };
+  const iw = ov.scale * W;
+  const ih = (iw * srcH) / Math.max(1, srcW);
+  const d = Math.min(iw, ih);
+  const circle = ov.shape === 'circle';
+  return { cx: ov.x * W, cy: ov.y * H, w: circle ? d : iw, h: circle ? d : ih, iw, ih, rot: (ov.rot * Math.PI) / 180 };
 }
 
 function overlayPath(ctx, ov, w, h) {
@@ -276,7 +280,7 @@ export function drawOverlay(ctx, ov, W, H, t, src) {
   if (a.alpha <= 0) return;
   const r = overlayRect(ov, W, H, src.w, src.h);
   ctx.save();
-  ctx.translate(r.cx, r.cy + a.dy * r.h * 0.4);
+  ctx.translate(r.cx, r.cy + a.dy * r.ih * 0.4);
   ctx.rotate(r.rot);
   ctx.scale(a.scale, a.scale);
   ctx.globalAlpha *= ov.opacity * a.alpha;
@@ -299,11 +303,11 @@ export function drawOverlay(ctx, ov, W, H, t, src) {
   if (colorActive(ov.color) || chromaActive(ov.chroma)) {
     // グリーンバック合成・色調補正（表示される大きさで加工）
     const tf = ctx.getTransform ? ctx.getTransform() : { a: 1, b: 0 };
-    const k = Math.min(1, Math.hypot(tf.a, tf.b) * (r.w / src.w));
+    const k = Math.min(1, Math.hypot(tf.a, tf.b) * (r.iw / src.w));
     const out = glProc().process((g, w, h) => src.draw(g, 0, 0, w, h), src.w * k, src.h * k, ov.color, ov.chroma);
-    if (out) ctx.drawImage(out, -r.w / 2, -r.h / 2, r.w, r.h);
-    else src.draw(ctx, -r.w / 2, -r.h / 2, r.w, r.h);
-  } else src.draw(ctx, -r.w / 2, -r.h / 2, r.w, r.h);
+    if (out) ctx.drawImage(out, -r.iw / 2, -r.ih / 2, r.iw, r.ih);
+    else src.draw(ctx, -r.iw / 2, -r.ih / 2, r.iw, r.ih);
+  } else src.draw(ctx, -r.iw / 2, -r.ih / 2, r.iw, r.ih);
   ctx.restore();
   if (ov.border && ov.border.on && ov.border.width > 0) {
     overlayPath(ctx, ov, r.w, r.h);
