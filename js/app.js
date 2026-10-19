@@ -2649,7 +2649,7 @@ async function renderSavedList() {
   box.append(h('div', { class: 'saved-head' },
     h('span', { class: 'sec-title' }, `続きから編集（${list.length}件）`),
     h('button', { class: 'chip danger', onclick: async () => {
-      if (!confirm(`保存した編集 ${list.length}件と、一緒に保存した素材ファイルをすべて削除しますか？\n元に戻せません（写真Appなどにある元の動画は消えません）。`)) return;
+      if (!confirm(`保存した編集 ${list.length}件をすべて削除しますか？\n編集していた内容は全て削除され、元に戻せません。写真Appの元の動画とスタンプは消えません。`)) return;
       try {
         await deleteAllProjects();
         S.stored = new Set();
