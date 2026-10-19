@@ -3087,7 +3087,19 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) pause
 addFontCss();
 renderSavedList();
 // バージョン表示（更新が反映されているかの確認用）
-{ const v = globalThis.DRACUT_VERSION; if (v) $('verInfo').textContent = `ver ${v.ver}・${v.updated} 更新`; }
+{
+  const v = globalThis.DRACUT_VERSION;
+  if (v) {
+    $('verInfo').textContent = `ver ${v.ver}・${v.updated} 更新`;
+    const ul = $('historyList');
+    for (const h of (v.history || []).slice(0, 3)) {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="h-head">ver ${h.ver}（${h.date}）</span>`;
+      li.append(h.text);
+      ul.append(li);
+    }
+  }
+}
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
