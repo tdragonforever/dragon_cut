@@ -355,8 +355,15 @@ function drawSourceFromVideo(c) {
   if (!auxUsed && !auxEl.paused) auxEl.pause();
 }
 
+// 画面（出来上がり）の外枠: 比率を変えているとき・動画クリップを選んでいるとき・画面に触れている間だけ見せる
+function updateFrameOutline() {
+  const on = S.panel === 'ratio' || (S.sel && S.sel.kind === 'video' && !S.panel) || S.stageTouch;
+  preview.classList.toggle('framed', !!on);
+}
+
 function draw() {
   if (!S.proj) return;
+  updateFrameOutline();
   const W = preview.width, H = preview.height;
   if (cropMode()) {
     pctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1056,8 +1063,12 @@ function deleteItem(kind, id) {
 const pointers = new Map();
 let stageDrag = null;
 const stage = $('stage');
+let touchTimer = 0;
 stage.addEventListener('pointerdown', (e) => {
   if (!S.proj) return;
+  clearTimeout(touchTimer);
+  S.stageTouch = true;
+  updateFrameOutline();
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   stage.setPointerCapture(e.pointerId);
   const r = preview.getBoundingClientRect();
@@ -1172,6 +1183,9 @@ const stageUp = (e) => {
   }
   stageDrag = null;
   S.guideX = false;
+  // 指を離してから少しのあいだ外枠を残す
+  clearTimeout(touchTimer);
+  touchTimer = setTimeout(() => { S.stageTouch = false; updateFrameOutline(); }, 700);
   if (!d) return;
   if (d.moved) { commit(); if (d.type === 'crop') layoutPreview(); refreshPanelValues(); requestDraw(); return; }
   if (e.type === 'pointercancel') return;
@@ -1254,6 +1268,7 @@ function closePanel(silent) {
   $('tools').hidden = false;
   $('tlArea').hidden = false;
   if (!silent) commit();
+  updateFrameOutline();
   renderTimeline();
   scrollToTime();
   if (wasCrop || wasAudio) layoutPreview();
