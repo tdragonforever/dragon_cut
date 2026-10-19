@@ -1189,7 +1189,7 @@ function openPanel(name, title) {
   body.innerHTML = '';
   body.scrollTop = 0;
   const builders = { speed: buildSpeed, volume: buildVolume, crop: buildCrop, tts: buildTts, effectPick: buildEffectPick, audio: buildAudioFx, color: buildColorPanel, trans: buildTransPanel, stamps: buildStamps };
-  const titles = { speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
+  const titles = { speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ（Demo）', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
   $('panelTitle').textContent = title || titles[name] || '';
   $('panelDone').textContent = name === 'stamps' ? '閉じる' : '完了';
   if (builders[name]) builders[name](body);
@@ -1596,6 +1596,8 @@ function buildCrop(body) {
 // --- 読み上げ ---
 const TTS_KEY = 'tts-shortcut-name';
 function buildTts(body) {
+  toast('動作確認未実施');
+  body.append(h('p', { class: 'demo-note' }, '動作確認未実施'));
   const ta = h('textarea', { rows: 3, placeholder: '読み上げる文章' });
   ta.value = localStorage.getItem('tts-last') || '';
   ta.addEventListener('input', () => { try { localStorage.setItem('tts-last', ta.value); } catch {} });
