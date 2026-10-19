@@ -283,3 +283,5 @@ input[type=range] { accent-color: #7a8bff; }
 .history li { margin-bottom: 6px; }
 .history .h-head { display: block; font-variant-numeric: tabular-nums; color: var(--text); opacity: .75; }
 .warn-red { color: #ff5a5a; font-weight: 600; }
+.pick-guide { margin-top: 10px; padding: 0 12px; font-size: 12px; line-height: 1.5; color: var(--muted); text-align: left; }
+.pick-guide b { display: block; color: var(--text); font-size: 13px; margin-bottom: 2px; }
