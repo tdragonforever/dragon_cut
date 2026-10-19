@@ -1766,7 +1766,7 @@ function buildTts(body) {
     speechSynthesis.speak(u);
   };
   body.append(sec('文章', ta));
-  body.append(sec('声の試し聞き（iPhone内蔵の声）', sel,
+  body.append(sec('声の試し聞き（スマホ内蔵の声）', sel,
     h('div', { class: 'row' }, h('label', {}, '速さ'), rate, h('output')),
     h('div', { class: 'row' }, h('label', {}, '高さ'), pitch, h('output')),
     h('button', { class: 'wide', onclick: speak }, '▶ 試し聞き')));
@@ -2940,7 +2940,7 @@ async function buildStamps(body) {
         h('li', {}, 'iPhoneの写真アプリで写真を開き、人物や物を長押しする（ふちが光る）'),
         h('li', {}, '「コピー」を選ぶ（背景が消えた画像がコピーされます）'),
         h('li', {}, 'DraCutに戻って「📋 貼り付け（iPhoneのみ）」→「ペースト」')),
-      h('p', {}, 'iPhone・iPad（iOS 16以降）の機能を使います。Androidやパソコンでは使えません。切り抜きはiPhoneの中で行われ、外部には送信されません。'))));
+      h('p', {}, 'iPhone・iPad（iOS 16以降）の機能を使います。Androidやパソコンでは使えません。切り抜きはスマホの中で行われ、外部には送信されません。'))));
   body.append(grid);
   body.append(h('p', { class: 'lbl' }, stampEdit
     ? 'スタンプをタップすると、切り抜き・フチをやり直せます。右上の × で登録を削除します。すでに動画に置いたスタンプは変わりません。'
@@ -3020,7 +3020,7 @@ async function openExport() {
     const hi = bitrateFor(s.w, s.h, EXP.fps, EXP.codec, 'high'), mx = bitrateFor(s.w, s.h, EXP.fps, EXP.codec, 'max');
     const mb = ((br + 256000) * dur()) / 8 / 1e6;
     $('expEstimate').textContent = `${s.w}×${s.h}・${+EXP.fps.toFixed(2)}fps・約${Math.round(br / 1e6)}Mbps・予想サイズ 約${mb < 10 ? mb.toFixed(1) : Math.round(mb)}MB（${fmt(dur())}）`
-      + `\nビットレート＝1秒あたりのデータ量。高＝iPhoneのカメラと同じくらい（約${Math.round(hi / 1e6)}Mbps）、最高＝その約1.6倍（約${Math.round(mx / 1e6)}Mbps）。細かい模様や動きの激しい場面で差が出ます。`;
+      + `\nビットレート＝1秒あたりのデータ量。高＝スマホのカメラと同じくらい（約${Math.round(hi / 1e6)}Mbps）、最高＝その約1.6倍（約${Math.round(mx / 1e6)}Mbps）。細かい模様や動きの激しい場面で差が出ます。`;
   };
   box.append(
     h('div', { class: 'sec-title' }, '解像度'), chips({ options: resOpts, get: () => EXP.limit, set: (v) => (EXP.limit = v), onChange: est }),
@@ -3266,13 +3266,13 @@ function pickShow(phase) {
   const what = pick.input && pick.input.id === 'ovFile' ? '素材' : pick.input && pick.input.id === 'stampFile' ? '画像' : '動画';
   if (phase === 'open') {
     $('pwTitle').textContent = `${what}を選んでください`;
-    $('pwSub').textContent = `選んで「追加」を押すと、iPhoneが${what}を準備してから自動で読み込みが始まります。`;
+    $('pwSub').textContent = `選んで「追加」を押すと、スマホが${what}を準備してから自動で読み込みが始まります。`;
     return;
   }
   pick.t0 = performance.now();
   const tick = () => {
     const sec = Math.floor((performance.now() - pick.t0) / 1000);
-    $('pwTitle').textContent = `iPhoneが${what}を準備しています… ${sec}秒`;
+    $('pwTitle').textContent = `スマホが${what}を準備しています… ${sec}秒`;
     $('pwSub').textContent = sec < 3
       ? 'そのままお待ちください。準備が終わると自動で開きます。'
       : '4Kや長い動画は、数十秒〜1分ほどかかることがあります。写真Appから「"ファイル"に保存」した動画を「ブラウズ」から選ぶと、この準備なしですぐ開けます。';
