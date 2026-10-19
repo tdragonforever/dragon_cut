@@ -264,3 +264,5 @@ input[type=range] { accent-color: #7a8bff; }
 .cut-row button { flex: 1; font-size: 13px; padding: 8px 6px; }
 .cut-row .danger { color: var(--danger); }
 .paste-help summary { font-size: 12px; }
+.stamp-editbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; padding: 8px 10px; border-radius: 10px;
+  background: rgba(56,225,255,.08); border: 1px solid rgba(56,225,255,.3); font-size: 14px; font-weight: 600; }

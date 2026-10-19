@@ -1171,6 +1171,7 @@ function openPanel(name, title) {
   const builders = { speed: buildSpeed, volume: buildVolume, crop: buildCrop, tts: buildTts, effectPick: buildEffectPick, audio: buildAudioFx, color: buildColorPanel, trans: buildTransPanel, stamps: buildStamps };
   const titles = { speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
   $('panelTitle').textContent = title || titles[name] || '';
+  $('panelDone').textContent = name === 'stamps' ? '閉じる' : '完了';
   if (builders[name]) builders[name](body);
   if (wasCrop !== cropMode()) layoutPreview();
   else if (name === 'audio') requestAnimationFrame(layoutPreview);
@@ -2604,7 +2605,7 @@ async function addStampFiles(files) {
   }
   $('toast').hidden = true;
   requestPersist();
-  toast(ok ? `${ok}個のスタンプを登録しました（切り抜きは「編集」から）` : '登録できませんでした（容量不足の可能性があります）', 3000);
+  toast(ok ? `${ok}個のスタンプを登録しました（切り抜きは「編集・削除」から）` : '登録できませんでした（容量不足の可能性があります）', 3000);
   if (S.panel === 'stamps') openPanel('stamps');
 }
 $('stampFile').addEventListener('change', (e) => { addStampFiles(e.target.files); e.target.value = ''; });
@@ -2671,10 +2672,20 @@ async function placeStamp(st) {
 
 async function buildStamps(body) {
   const grid = h('div', { class: 'stamp-grid' });
-  body.append(h('div', { class: 'btn-row' },
-    h('button', { class: 'btn-accent', onclick: () => { $('stampFile').value = ''; $('stampFile').click(); } }, '＋ 写真から追加'),
-    h('button', { onclick: pasteStamp }, '📋 貼り付け（iPhoneのみ）'),
-    h('button', { onclick: () => { stampEdit = !stampEdit; openPanel('stamps'); } }, stampEdit ? '完了' : '編集')));
+  let list = [];
+  try { list = await listStamps(); } catch (e) { console.warn(e); }
+  if (!list.length) stampEdit = false;
+  if (stampEdit) {
+    // 編集・削除中: 追加ボタンは隠して、終えるボタンだけを目立たせる
+    body.append(h('div', { class: 'stamp-editbar' },
+      h('span', {}, '✏️ 編集・削除中'),
+      h('button', { class: 'done', onclick: () => { stampEdit = false; openPanel('stamps'); } }, '編集を終える')));
+  } else {
+    body.append(h('div', { class: 'btn-row' },
+      h('button', { class: 'btn-accent', onclick: () => { $('stampFile').value = ''; $('stampFile').click(); } }, '＋ 写真から追加'),
+      h('button', { onclick: pasteStamp }, '📋 貼り付け（iPhoneのみ）'),
+      list.length ? h('button', { onclick: () => { stampEdit = true; openPanel('stamps'); } }, '編集・削除') : null));
+  }
   if (!stampEdit) body.append(h('details', { class: 'paste-help' },
     h('summary', {}, '「貼り付け」の使い方（iPhone・iPad専用）'),
     h('div', { class: 'help' },
@@ -2685,10 +2696,8 @@ async function buildStamps(body) {
       h('p', {}, 'iPhone・iPad（iOS 16以降）の機能を使います。Androidやパソコンでは使えません。切り抜きはiPhoneの中で行われ、外部には送信されません。'))));
   body.append(grid);
   body.append(h('p', { class: 'lbl' }, stampEdit
-    ? 'スタンプをタップすると切り抜き・フチをやり直せます。× で削除します。すでに動画に置いたスタンプは変わりません。'
+    ? 'スタンプをタップすると、切り抜き・フチをやり直せます。右上の × で登録を削除します。すでに動画に置いたスタンプは変わりません。'
     : 'タップすると、再生位置（白い線）にスタンプを置きます。写真から追加すると切り抜き画面が開きます（背景を自動で消す・なぞって切り抜く・消しゴム・形・ステッカー風のフチ）。登録した画像はアプリ内に保存されるので、元の画像を消しても使えます。'));
-  let list = [];
-  try { list = await listStamps(); } catch (e) { console.warn(e); }
   if (!list.length) {
     grid.append(h('div', { class: 'stamp-empty lbl' }, 'まだスタンプがありません。「＋ 写真から追加」で、よく使う画像（ロゴ、イラスト、透過PNGなど）を登録しましょう。'));
     return;
