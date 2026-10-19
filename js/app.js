@@ -1038,7 +1038,11 @@ stage.addEventListener('pointerdown', (e) => {
   const r = preview.getBoundingClientRect();
   if (pointers.size === 2 && stageDrag) {
     const [a, b] = [...pointers.values()];
-    stageDrag.pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y), size: stageDrag.target?.size, scale: stageDrag.target?.scale, crop: { ...S.proj.crop } };
+    const t = stageDrag.target;
+    stageDrag.pinch = {
+      d0: Math.hypot(a.x - b.x, a.y - b.y), m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      size: t?.size, scale: t?.scale, pos: t ? { x: t.x, y: t.y } : null, crop: { ...S.proj.crop },
+    };
     return;
   }
   if (pointers.size > 1) return;
@@ -1094,8 +1098,14 @@ stage.addEventListener('pointermove', (e) => {
     const [a, b] = [...pointers.values()];
     const k = Math.hypot(a.x - b.x, a.y - b.y) / Math.max(10, d.pinch.d0);
     d.moved = true;
+    // 2本指: 指の間隔で拡大縮小、2本指の中心の動きで移動
+    const mx = (a.x + b.x) / 2 - d.pinch.m0.x, my = (a.y + b.y) / 2 - d.pinch.m0.y;
     if (d.type === 'text') d.target.size = clamp(d.pinch.size * k, 0.015, 0.6);
     else if (d.type === 'overlay') d.target.scale = clamp(d.pinch.scale * k, 0.03, 3);
+    if ((d.type === 'text' || d.type === 'overlay') && d.pinch.pos && d.r) {
+      d.target.x = clamp(d.pinch.pos.x + mx / d.r.width, -0.2, 1.2);
+      d.target.y = clamp(d.pinch.pos.y + my / d.r.height, -0.2, 1.2);
+    }
     if (d.type === 'text' || d.type === 'overlay') syncKf(d.target);
     else if (d.type === 'crop') scaleCrop(d.pinch.crop, 1 / k);
     requestDraw();
@@ -1124,7 +1134,17 @@ const stageUp = (e) => {
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
   const d = stageDrag;
-  if (pointers.size > 0) return;
+  if (pointers.size > 0) {
+    // 2本指のうち1本を離したら、残った指の位置から1本指のドラッグを続ける（急に飛ばないように）
+    if (d && pointers.size === 1) {
+      const [p] = [...pointers.values()];
+      d.x = p.x; d.y = p.y;
+      if (d.target) d.o = { x: d.target.x, y: d.target.y };
+      else if (d.type === 'crop') d.o = { ...S.proj.crop };
+      delete d.pinch;
+    }
+    return;
+  }
   stageDrag = null;
   S.guideX = false;
   if (!d) return;
