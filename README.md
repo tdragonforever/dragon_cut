@@ -45,6 +45,7 @@ iPhone の Safari で動く、CapCut の簡易版のような動画編集アプ�
 | `js/fx-worklet.js` | 試聴用。再生中の動画の音声にリアルタイムで補正をかける（AudioWorklet） |
 | `js/fx-worker.js` | 自動EQの解析と音量合わせの計算（別スレッド） |
 | `js/vendor/mediabunny.min.mjs` | Mediabunny 1.61.3（MPL-2.0、`mediabunny.LICENSE`） |
+| `fonts/syne-800-dracut.woff2` | ロゴ用フォント Syne（SIL Open Font License。「DraCut」の文字だけ収録） |
 | `sw.js` | オフライン用（アプリ本体と一度使ったフォントをキャッシュ） |
 
 ## ローカルで動かす
