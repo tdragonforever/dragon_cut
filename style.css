@@ -227,3 +227,10 @@ input[type=range] { accent-color: #7a8bff; }
 #loadMsg { white-space: pre-line; text-align: center; }
 .pick-note { margin-top: 10px; font-size: 12px; line-height: 1.5; color: #ffd98a; background: rgba(255,200,80,.1); border-radius: 10px; padding: 8px 12px; text-align: left; }
 .saved-head { display: flex; justify-content: space-between; align-items: center; }
+
+/* ---- タイトルロゴ ---- */
+.logo { display: flex; align-items: center; gap: 6px; font-family: "Avenir Next", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+  font-size: 22px !important; font-weight: 800 !important; font-style: italic; letter-spacing: .5px; line-height: 1; user-select: none; -webkit-user-select: none; }
+.logo-mark { width: 24px; height: 24px; flex: none; filter: drop-shadow(0 0 6px rgba(255,110,40,.45)); }
+.logo-a { color: #f2f2f7; }
+.logo-b { background: linear-gradient(90deg, #ff4b2b, #ff9a1f 60%, #ffd23f); -webkit-background-clip: text; background-clip: text; color: transparent; padding-right: 2px; }
