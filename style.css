@@ -285,3 +285,5 @@ input[type=range] { accent-color: #7a8bff; }
 .pick-guide { margin-top: 10px; padding: 0 12px; font-size: 12px; line-height: 1.5; color: var(--muted); text-align: left; }
 .pick-guide b { display: block; color: var(--text); font-size: 13px; margin-bottom: 2px; }
 .demo-note { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: #ffd98a; background: rgba(255,200,80,.1); border-radius: 8px; padding: 6px 10px; }
+.vol-item { margin-top: 6px; }
+.vol-name { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

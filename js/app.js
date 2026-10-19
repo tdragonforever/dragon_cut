@@ -62,7 +62,7 @@ const S = {
   curClip: null, // プレビュー中のクリップ（clipTimes の要素）
   t: 0, playing: false, pps: 40, sel: null, panel: null,
   history: [], hIndex: -1,
-  audio: { ctx: null, gain: null, nodes: [], fxNodes: [], elemOk: false, src: null, fx: null, fxLoading: null },
+  audio: { ctx: null, gain: null, nodes: [], fxNodes: [], vols: [], elemOk: false, src: null, fx: null, fxLoading: null },
   expectScroll: -1,
   // 音声補正
   ovMedia: new Map(), // 重ねる素材 mediaId -> { type, file, url, bitmap, width, height, duration, fps, thumb }
@@ -540,7 +540,7 @@ async function play() {
   const now = ctx.currentTime + 0.03;
   const clips = [...S.proj.audios.map((a) => [a, S.buffers.get(a.id)]), ...S.proj.overlays.filter((o) => o.type === 'video').map((o) => [o, S.buffers.get(o.mediaId)])];
   for (const [a, buf] of clips) {
-    if (!buf || a.end <= S.t || a.volume <= 0) continue;
+    if (!buf || a.end <= S.t) continue;
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const g = ctx.createGain();
@@ -556,7 +556,11 @@ async function play() {
         prepAudioAfx(a);
       } catch (e) { console.warn(e); src.connect(g); }
     } else src.connect(g);
-    g.connect(ctx.destination);
+    // g はフェードの形（0〜1）、vol は音量。再生中に音量を変えても反映できるように分けておく
+    const vol = ctx.createGain();
+    vol.gain.value = a.volume;
+    g.connect(vol).connect(ctx.destination);
+    S.audio.vols.push({ id: a.id, vol });
     const when = a.start - S.t;
     const startAt = now + Math.max(0, when);
     const into = Math.max(0, -when);
@@ -564,14 +568,14 @@ async function play() {
     const gp = g.gain;
     const clipPos0 = into;
     const envAt = (pos) => {
-      let v = a.volume;
+      let v = 1;
       if (a.fadeIn > 0 && pos < a.fadeIn) v *= pos / a.fadeIn;
       const rem = a.end - a.start - pos;
       if (a.fadeOut > 0 && rem < a.fadeOut) v *= Math.max(0, rem / a.fadeOut);
       return v;
     };
     gp.setValueAtTime(envAt(clipPos0), startAt);
-    if (a.fadeIn > 0 && clipPos0 < a.fadeIn) gp.linearRampToValueAtTime(a.volume, startAt + (a.fadeIn - clipPos0));
+    if (a.fadeIn > 0 && clipPos0 < a.fadeIn) gp.linearRampToValueAtTime(1, startAt + (a.fadeIn - clipPos0));
     if (a.fadeOut > 0) {
       const foStart = Math.max(clipPos0, a.end - a.start - a.fadeOut);
       gp.setValueAtTime(envAt(foStart), startAt + (foStart - clipPos0));
@@ -625,6 +629,7 @@ function pause() {
   S.audio.nodes = [];
   for (const x of S.audio.fxNodes) { try { x.node.disconnect(); } catch {} }
   S.audio.fxNodes = [];
+  S.audio.vols = [];
   $('playIcon').innerHTML = '<path d="M8 5v14l11-7z"/>';
   if (S.curClip && S.cur && !S.cur.el.seeking) S.t = clamp(curTime(), S.curClip.start, Math.max(S.curClip.start, S.curClip.end - 0.001));
   S.t = clamp(S.t, 0, dur());
@@ -1510,7 +1515,7 @@ function buildAudio(body, a) {
   const buf = S.buffers.get(a.id);
   body.append(sec(a.kind === 'tts' ? '読み上げ音声' : '音楽・効果音', h('div', {}, a.name),
     h('div', { class: 'lbl' }, buf ? `長さ ${buf.duration.toFixed(1)}秒` : ''),
-    slider({ label: '音量', min: 0, max: 2, step: 0.01, get: () => a.volume, set: (v) => (a.volume = v), show: (v) => Math.round(v * 100) + '%', onChange: renderTimeline }),
+    slider({ label: '音量', min: 0, max: 2, step: 0.01, get: () => a.volume, set: (v) => { a.volume = v; liveVolume(a); }, show: (v) => Math.round(v * 100) + '%', onChange: renderTimeline }),
     slider({ label: 'フェードイン', min: 0, max: 5, step: 0.1, get: () => a.fadeIn, set: (v) => (a.fadeIn = v), show: (v) => v.toFixed(1) + 's' }),
     slider({ label: 'フェードアウト', min: 0, max: 5, step: 0.1, get: () => a.fadeOut, set: (v) => (a.fadeOut = v), show: (v) => v.toFixed(1) + 's' })));
   body.append(h('button', { class: 'btn-accent wide', onclick: () => openAfx(a.id) }, a.afx && a.afx.on ? '🎚 音声補正（EQ・エフェクト）オン ›' : '🎚 音声補正（EQ・エフェクト） ›'));
@@ -1527,17 +1532,42 @@ function buildAudio(body, a) {
     h('button', { class: 'danger', style: { color: 'var(--danger)' }, onclick: () => deleteItem('audio', a.id) }, '削除')));
 }
 
+// 再生中の追加音声・重ねた動画の音量をすぐ反映する
+function liveVolume(it) {
+  for (const x of S.audio.vols) if (x.id === it.id) x.vol.gain.value = it.volume;
+}
+
+// 音量: トラック（動画・重ねた動画・音楽・読み上げ）ごとに、1本ずつ調整する
 function buildVolume(body) {
   const p = S.proj;
-  body.append(sec('動画の音声（全体）',
-    slider({ label: '元の音量', min: 0, max: 2, step: 0.01, get: () => p.origVolume, set: (v) => { p.origVolume = v; applyOrigVolume(); }, show: (v) => Math.round(v * 100) + '%' }),
-    [...S.srcs.values()].some((x) => x.info.hasAudio) ? null : h('p', { class: 'lbl' }, 'この動画には音声がありません')));
-  if (!p.audios.length) body.append(h('p', { class: 'lbl' }, '「音楽」や「読み上げ」で音声を追加すると、ここで動画の音とのバランスを調整できます。'));
-  for (const a of p.audios) {
-    body.append(sec((a.kind === 'tts' ? '🗣 ' : '♪ ') + a.name + `（${fmt(a.start)}〜）`,
-      slider({ label: '音量', min: 0, max: 2, step: 0.01, get: () => a.volume, set: (v) => (a.volume = v), show: (v) => Math.round(v * 100) + '%' })));
+  const pct = (v) => Math.round(v * 100) + '%';
+  const item = (name, it, onSet) => h('div', { class: 'vol-item' },
+    h('div', { class: 'vol-name' }, name),
+    slider({ label: '音量', min: 0, max: 2, step: 0.01, get: () => it.volume, set: (v) => { it.volume = v; onSet && onSet(v); }, show: pct, onChange: renderTimeline }));
+
+  const hasAudio = [...S.srcs.values()].some((x) => x.info.hasAudio);
+  const main = sec('🎬 動画',
+    slider({ label: '全体', min: 0, max: 2, step: 0.01, get: () => p.origVolume, set: (v) => { p.origVolume = v; applyOrigVolume(); }, show: pct, onChange: renderTimeline }),
+    hasAudio ? null : h('p', { class: 'lbl' }, 'この動画には音声がありません'));
+  if (hasAudio && p.clips.length > 1) {
+    clipTimes(p).forEach((x) => {
+      const src = S.srcs.get(x.clip.srcId);
+      main.append(item(`クリップ${x.index + 1}：${src ? src.info.name.replace(/\.[^.]+$/, '') : ''}（${fmt(x.start)}〜）`, x.clip, (v) => {
+        if (S.cur && S.curClip && S.curClip.clip === x.clip && S.cur.gain) S.cur.gain.gain.value = v;
+      }));
+    });
   }
-  body.append(h('p', { class: 'lbl' }, '100% が元の大きさです。再生しながら調整できます。'));
+  body.append(main);
+
+  const group = (title, list, nameOf) => {
+    if (!list.length) return;
+    body.append(sec(title, ...list.map((it) => item(nameOf(it) + `（${fmt(it.start)}〜）`, it, () => liveVolume(it)))));
+  };
+  group('🎞 重ねた動画', p.overlays.filter((o) => o.type === 'video'), (o) => o.name);
+  group('♪ 音楽・効果音', p.audios.filter((a) => a.kind !== 'tts'), (a) => a.name);
+  group('🗣 読み上げ', p.audios.filter((a) => a.kind === 'tts'), (a) => a.name);
+  if (!p.audios.length && !p.overlays.some((o) => o.type === 'video')) body.append(h('p', { class: 'lbl' }, '「音楽」「読み上げ」で音声を追加したり、動画を重ねたりすると、ここでそれぞれの音量を調整できます。'));
+  body.append(h('p', { class: 'lbl' }, '100% が元の大きさです（最大 200%）。動画の「全体」は動画のクリップすべてにかかります。再生しながら調整できます。'));
 }
 
 // --- 速度 ---
@@ -2334,7 +2364,7 @@ function buildOverlay(body, ov) {
   if (ov.type === 'video') {
     body.append(sec('音声',
       S.buffers.get(ov.mediaId)
-        ? slider({ label: '音量', min: 0, max: 2, step: 0.01, get: () => ov.volume, set: (v) => (ov.volume = v), show: (v) => Math.round(v * 100) + '%' })
+        ? slider({ label: '音量', min: 0, max: 2, step: 0.01, get: () => ov.volume, set: (v) => { ov.volume = v; liveVolume(ov); }, show: (v) => Math.round(v * 100) + '%' })
         : h('p', { class: 'lbl' }, 'この動画には音声がありません')));
   }
   body.append(chromaSection(ov));
