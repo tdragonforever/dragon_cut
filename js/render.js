@@ -1,6 +1,6 @@
 // 1フレーム分の描画。プレビュー（<video> から）と書き出し（デコードしたフレームから）で同じ関数を使うので、
 // 見た目が完全に一致する。
-import { cropRect } from './project.js';
+import { cropRect, bgFill } from './project.js';
 import { fontString } from './fonts.js';
 import { glProc, colorActive, chromaActive } from './gl.js';
 
@@ -68,7 +68,7 @@ export function effectState(p, t, W, H) {
 export function renderFrame(ctx, W, H, p, t, drawSource, opt = {}) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1;
-  ctx.fillStyle = '#000';
+  ctx.fillStyle = bgFill(p);
   ctx.fillRect(0, 0, W, H);
   const fx = effectState(p, t, W, H);
   const r = cropRect(p);

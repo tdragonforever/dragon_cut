@@ -68,10 +68,35 @@ export function motionAt(clip, k) {
   return null;
 }
 
+// ぼかし背景: 素材を画面いっぱいに広げてぼかしたものを、余白の後ろに敷く
+// 小さく描いてから引き伸ばすので軽い。ctx.filter が使えるときはさらにぼかしてなめらかにする
+let blurCv = null;
+const filterOk = (() => { try { const g = document.createElement('canvas').getContext('2d'); g.filter = 'blur(2px)'; return g.filter === 'blur(2px)'; } catch { return false; } })();
+function drawBlurBg(c, F, f) {
+  const k = 1 / 20;
+  const w = Math.max(8, Math.round(F.width * k)), h = Math.max(8, Math.round(F.height * k));
+  if (!blurCv) blurCv = document.createElement('canvas');
+  if (blurCv.width !== w || blurCv.height !== h) { blurCv.width = w; blurCv.height = h; }
+  const g = blurCv.getContext('2d');
+  const r = fitRect(F, f.w, f.h, 'cover');
+  g.filter = filterOk ? 'blur(2px)' : 'none';
+  // ふちが透けないよう少し大きめに描く
+  f.draw(g, r.x * k - 4, r.y * k - 4, r.w * k + 8, r.h * k + 8);
+  g.filter = 'none';
+  c.save();
+  c.imageSmoothingEnabled = true;
+  c.imageSmoothingQuality = 'high';
+  c.drawImage(blurCv, 0, 0, F.width, F.height);
+  c.fillStyle = 'rgba(0,0,0,.2)';
+  c.fillRect(0, 0, F.width, F.height);
+  c.restore();
+}
+
 // f: { w, h, draw(ctx, x, y, w, h) } … 素材のフレーム
 function drawClipFrame(c, p, x, f, t) {
   const F = p.frame, clip = x.clip;
   const r = fitRect(F, f.w, f.h, clip.fit);
+  if (p.bg && p.bg.type === 'blur' && (r.w < F.width - 1 || r.h < F.height - 1)) drawBlurBg(c, F, f);
   c.save();
   const m = motionAt(clip, Math.min(1, Math.max(0, (t - x.start) / Math.max(0.01, x.end - x.start))));
   if (m) {

@@ -4,6 +4,7 @@ import {
   newClip, clipTimes, clipAt, srcTimeAt, groupsOf, fitRect, subProject, clipLen,
   assignLanes, TEXT_PRESETS, newTextClip, applyPreset, EFFECT_TYPES, newEffect, newAudioClip,
   snapshot, restore, newId, newOverlay,
+  RATIOS, frameForRatio,
 } from './project.js';
 import { renderFrame, drawText, textBounds, overlayRect } from './render.js';
 import { FONTS, fontByKey, addFontCss, ensureFont } from './fonts.js';
@@ -1212,8 +1213,8 @@ function openPanel(name, title) {
   const body = $('panelBody');
   body.innerHTML = '';
   body.scrollTop = 0;
-  const builders = { speed: buildSpeed, volume: buildVolume, crop: buildCrop, tts: buildTts, effectPick: buildEffectPick, audio: buildAudioFx, color: buildColorPanel, trans: buildTransPanel, stamps: buildStamps };
-  const titles = { speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ（Demo）', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
+  const builders = { ratio: buildRatio, speed: buildSpeed, volume: buildVolume, crop: buildCrop, tts: buildTts, effectPick: buildEffectPick, audio: buildAudioFx, color: buildColorPanel, trans: buildTransPanel, stamps: buildStamps };
+  const titles = { ratio: '比率（出来上がりの縦横比）', speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ（Demo）', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
   $('panelTitle').textContent = title || titles[name] || '';
   $('panelDone').textContent = name === 'stamps' ? '閉じる' : '完了';
   if (builders[name]) builders[name](body);
@@ -1615,6 +1616,50 @@ function buildSpeed(body) {
 }
 
 // --- 切り抜き ---
+// --- 比率（出来上がりの縦横比） ---
+// 画面（frame）の縦横比を変える。大きさは最初の動画の短い辺に合わせる（拡大しすぎない）
+function setRatio(key) {
+  const p = S.proj;
+  const s0 = S.srcs.get(p.clips[0].srcId);
+  const base = s0 ? { width: s0.info.width, height: s0.info.height } : p.frame;
+  const f = frameForRatio(base, key);
+  p.ratio = key;
+  p.frame.width = f.width;
+  p.frame.height = f.height;
+  p.crop = { aspect: 'orig', x: 0, y: 0, w: 1, h: 1 };
+  layoutPreview();
+}
+function buildRatio(body) {
+  const p = S.proj;
+  const res = h('p', { class: 'lbl' });
+  const refreshRes = () => { const o = outputSize(p); res.textContent = `出来上がりのサイズ: ${o.w}×${o.h}`; };
+  refreshers.push(refreshRes);
+  refreshRes();
+  // 比率の形が分かるアイコンつきの選択肢
+  const icon = (r) => { const k = r ? (r >= 1 ? [22, 22 / r] : [22 * r, 22]) : [18, 18]; return h('span', { class: 'ratio-ico' + (r ? '' : ' orig'), style: { width: k[0] + 'px', height: k[1] + 'px' } }); };
+  body.append(sec('比率', chips({
+    options: RATIOS.map((a) => ({ v: a.key, cls: 'ratio-chip', node: h('span', { class: 'ratio-opt' }, icon(a.r), h('b', {}, a.label), a.note ? h('small', {}, a.note) : null) })),
+    get: () => p.ratio || 'orig',
+    set: (v) => { setRatio(v); refreshRes(); },
+  }), res));
+  const bg = () => p.bg || { type: 'black', color: '#1d2b3a' };
+  const color = h('input', { type: 'color' });
+  color.value = bg().color || '#1d2b3a';
+  color.addEventListener('input', () => { p.bg = { ...bg(), type: 'color', color: color.value }; refreshPanelValues(); requestDraw(); });
+  color.addEventListener('change', () => commit());
+  body.append(sec('余白の背景', chips({
+    options: [{ v: 'black', label: '黒' }, { v: 'white', label: '白' }, { v: 'blur', label: 'ぼかし' }, { v: 'color', label: '色を選ぶ' }],
+    get: () => bg().type,
+    set: (v) => { p.bg = { ...bg(), type: v, color: color.value }; if (v === 'color') color.click(); },
+  }), h('div', { class: 'row2' }, h('span', { class: 'lbl' }, '背景の色'), color),
+  h('p', { class: 'lbl' }, '「ぼかし」は、動画をぼかして余白に敷きます（CapCut と同じ見た目）。')));
+  body.append(sec('動画の合わせ方（すべてのクリップ）', chips({
+    options: [{ v: 'contain', label: '全体を表示（余白あり）' }, { v: 'cover', label: '画面いっぱい（はみ出しを切る）' }],
+    get: () => (p.clips.every((c) => c.fit === 'cover') ? 'cover' : p.clips.every((c) => c.fit !== 'cover') ? 'contain' : ''),
+    set: (v) => { for (const c of p.clips) c.fit = v; },
+  }), h('p', { class: 'lbl' }, 'クリップごとの合わせ方は、クリップを選んで「速度・クリップ」からも変えられます。')));
+}
+
 function buildCrop(body) {
   const p = S.proj;
   const res = h('p', { class: 'lbl' });

@@ -301,3 +301,10 @@ input[type=range] { accent-color: #7a8bff; }
 .sns svg { width: 16px; height: 16px; fill: currentColor; flex: none; }
 .sup-line { margin: 10px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
 .sup-line a { color: #ff8fb1; font-weight: 700; text-decoration: none; }
+/* 比率 */
+.ratio-chip { padding: 6px 10px; }
+.ratio-opt { display: inline-flex; align-items: center; gap: 6px; }
+.ratio-opt small { font-size: 10px; color: var(--muted); font-weight: 400; }
+.ratio-ico { display: inline-block; border: 2px solid currentColor; border-radius: 3px; box-sizing: border-box; flex: none; }
+.ratio-ico.orig { border-style: dashed; }
+input[type=color] { width: 44px; height: 30px; border: none; background: none; padding: 0; }

@@ -87,6 +87,33 @@ export function subProject(p, g) {
   return q;
 }
 
+// 出来上がりの縦横比（キャンバスの比率）。動画は「全体を表示」なら余白ができ、背景で埋める
+export const RATIOS = [
+  { key: 'orig', label: '元の比率' },
+  { key: '9:16', label: '9:16', r: 9 / 16, note: 'TikTok・リール' },
+  { key: '16:9', label: '16:9', r: 16 / 9, note: 'YouTube' },
+  { key: '1:1', label: '1:1', r: 1 },
+  { key: '4:5', label: '4:5', r: 4 / 5, note: 'Instagram' },
+  { key: '3:4', label: '3:4', r: 3 / 4 },
+  { key: '4:3', label: '4:3', r: 4 / 3 },
+  { key: '21:9', label: '21:9', r: 21 / 9, note: '映画' },
+];
+
+// base（最初の動画の大きさ）の短い辺を保ったまま、比率 key の画面の大きさにする
+export function frameForRatio(base, key) {
+  const a = RATIOS.find((x) => x.key === key);
+  if (!a || !a.r) return { width: base.width, height: base.height };
+  const short = Math.min(base.width, base.height);
+  return a.r >= 1 ? { width: even(short * a.r), height: even(short) } : { width: even(short), height: even(short / a.r) };
+}
+
+// 余白の背景 p.bg: { type: 'black' | 'white' | 'blur' | 'color', color }
+export const bgFill = (p) => {
+  const b = p.bg;
+  if (!b || b.type === 'black' || b.type === 'blur') return '#000';
+  return b.type === 'white' ? '#fff' : b.color || '#000';
+};
+
 export const ASPECTS = [
   { key: 'orig', label: '元のまま' },
   { key: '16:9', label: '16:9', r: 16 / 9 },
