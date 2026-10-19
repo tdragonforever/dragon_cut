@@ -13,7 +13,7 @@ import { CanvasSink } from './vendor/mediabunny.min.mjs';
 import { drawMain, TRANSITIONS, MOTIONS } from './compose.js';
 import { COLOR_PRESETS, defaultColor, defaultChroma, applyColorPreset, colorActive, edgeColor } from './gl.js';
 import { resolveKf } from './render.js';
-import { putProject, getProject, listProjects, putFile, getFile, deleteProject, deleteAllProjects, storageInfo, requestPersist } from './store.js';
+import { putProject, getProject, listProjects, putFile, getFile, deleteProject, deleteAllProjects, storageInfo, requestPersist, putStamp, deleteStamp, listStamps } from './store.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -1167,8 +1167,8 @@ function openPanel(name, title) {
   const body = $('panelBody');
   body.innerHTML = '';
   body.scrollTop = 0;
-  const builders = { speed: buildSpeed, volume: buildVolume, crop: buildCrop, tts: buildTts, effectPick: buildEffectPick, audio: buildAudioFx, color: buildColorPanel, trans: buildTransPanel };
-  const titles = { speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション' };
+  const builders = { speed: buildSpeed, volume: buildVolume, crop: buildCrop, tts: buildTts, effectPick: buildEffectPick, audio: buildAudioFx, color: buildColorPanel, trans: buildTransPanel, stamps: buildStamps };
+  const titles = { speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
   $('panelTitle').textContent = title || titles[name] || '';
   if (builders[name]) builders[name](body);
   if (wasCrop !== cropMode()) layoutPreview();
@@ -2563,6 +2563,99 @@ async function openSaved(id) {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// スタンプ（よく使う画像を登録して、ワンタップで動画に重ねる）
+// 登録した画像はアプリ内（IndexedDB）にコピーを保存するので、写真アプリの元画像を消しても使える
+
+const STAMP_MAX = 1600; // 長い辺の上限（容量の節約）
+let stampEdit = false;
+
+// 画像を読み込み、大きすぎるものは縮めて保存用のデータにする
+async function makeStamp(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, STAMP_MAX / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width * k)), hh = Math.max(1, Math.round(bmp.height * k));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = hh;
+  c.getContext('2d').drawImage(bmp, 0, 0, w, hh);
+  // 透明な部分がありうる形式は PNG のまま、写真は JPEG で保存
+  const keepAlpha = /png|webp|gif/.test(file.type) || /\.(png|webp|gif)$/i.test(file.name);
+  const type = keepAlpha ? 'image/png' : 'image/jpeg';
+  const blob = (k < 1 || !/png|jpe?g/.test(file.type)) ? await new Promise((r) => c.toBlob(r, type, 0.92)) : file;
+  const t = document.createElement('canvas');
+  const tk = 160 / Math.max(w, hh);
+  t.width = Math.max(1, Math.round(w * tk)); t.height = Math.max(1, Math.round(hh * tk));
+  t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
+  bmp.close && bmp.close();
+  return { id: newId('st'), name: file.name.replace(/\.[^.]+$/, '') || 'スタンプ', blob, type: blob.type || type, thumb: t.toDataURL('image/png'), w, h: hh, created: Date.now() };
+}
+
+async function addStampFiles(files) {
+  files = [...(files || [])];
+  if (!files.length) return;
+  let ok = 0;
+  for (let i = 0; i < files.length; i++) {
+    toast(`スタンプに登録中…（${i + 1}/${files.length}）`, 30000);
+    try { await putStamp(await makeStamp(files[i])); ok++; } catch (e) { console.warn('stamp', e); }
+  }
+  $('toast').hidden = true;
+  requestPersist();
+  toast(ok ? `${ok}個のスタンプを登録しました` : '登録できませんでした（容量不足の可能性があります）');
+  if (S.panel === 'stamps') openPanel('stamps');
+}
+$('stampFile').addEventListener('change', (e) => { addStampFiles(e.target.files); e.target.value = ''; });
+
+// スタンプを再生位置に置く
+async function placeStamp(st) {
+  if (!S.proj) return;
+  try {
+    const mid = 'stm' + st.id;
+    let m = S.ovMedia.get(mid);
+    if (!m) m = await loadOverlayMedia(new File([st.blob], st.name + (st.type === 'image/png' ? '.png' : '.jpg'), { type: st.type }), mid, 'image');
+    const o = outputSize(S.proj);
+    const ov = newOverlay(clamp(S.t, 0, Math.max(0, dur() - 0.1)), m, o.w, o.h);
+    ov.scale = Math.min(ov.scale, 0.3);
+    ov.anim = 'pop';
+    ov.end = Math.min(ov.start + 3, Math.max(ov.start + 0.5, dur()));
+    S.proj.overlays.push(ov);
+    commit();
+    closePanel(true);
+    select('overlay', ov.id);
+    toast('ドラッグで移動・2本指で大きさを変えられます');
+  } catch (e) {
+    console.error(e);
+    toast('スタンプを置けませんでした');
+  }
+}
+
+async function buildStamps(body) {
+  const grid = h('div', { class: 'stamp-grid' });
+  body.append(h('div', { class: 'btn-row' },
+    h('button', { class: 'btn-accent', onclick: () => { $('stampFile').value = ''; $('stampFile').click(); } }, '＋ 写真から追加'),
+    h('button', { onclick: () => { stampEdit = !stampEdit; openPanel('stamps'); } }, stampEdit ? '完了' : '編集（削除）')));
+  body.append(grid);
+  body.append(h('p', { class: 'lbl' }, stampEdit
+    ? '× を押すとスタンプを削除します。すでに動画に置いたスタンプは消えません。'
+    : 'タップすると、再生位置（白い線）にスタンプを置きます。登録した画像はアプリ内に保存されるので、写真アプリの元の画像を消しても使えます。'));
+  let list = [];
+  try { list = await listStamps(); } catch (e) { console.warn(e); }
+  if (!list.length) {
+    grid.append(h('div', { class: 'stamp-empty lbl' }, 'まだスタンプがありません。「＋ 写真から追加」で、よく使う画像（ロゴ、イラスト、透過PNGなど）を登録しましょう。'));
+    return;
+  }
+  for (const st of list) {
+    const cell = h('button', { class: 'stamp' + (stampEdit ? ' edit' : ''), 'aria-label': st.name, onclick: async () => {
+      if (stampEdit) {
+        if (!confirm(`スタンプ「${st.name}」を削除しますか？`)) return;
+        await deleteStamp(st.id);
+        openPanel('stamps');
+      } else placeStamp(st);
+    } }, h('img', { src: st.thumb, alt: '' }), stampEdit ? h('span', { class: 'stamp-x' }, '×') : null);
+    grid.append(cell);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // ツール
 
@@ -2573,6 +2666,7 @@ $('tools').addEventListener('click', (e) => {
   if (tool === 'text') addText();
   else if (tool === 'music') { $('audioFile').value = ''; $('audioFile').click(); }
   else if (tool === 'overlay') { $('ovFile').value = ''; $('ovFile').click(); }
+  else if (tool === 'stamps') openPanel('stamps');
   else if (tool === 'color') openPanel('color');
   else if (tool === 'addvideo') { $('addVideo').value = ''; $('addVideo').click(); }
   else if (tool === 'effect') openPanel('effectPick');
@@ -2860,7 +2954,7 @@ function pickShow(phase) {
   $('pickWait').hidden = false;
   $('pwSpin').hidden = phase !== 'prep';
   clearInterval(pick.timer);
-  const what = pick.input && pick.input.id === 'ovFile' ? '素材' : '動画';
+  const what = pick.input && pick.input.id === 'ovFile' ? '素材' : pick.input && pick.input.id === 'stampFile' ? '画像' : '動画';
   if (phase === 'open') {
     $('pwTitle').textContent = `${what}を選んでください`;
     $('pwSub').textContent = `選んで「追加」を押すと、iPhoneが${what}を準備してから自動で読み込みが始まります。`;
@@ -2899,7 +2993,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) pick
 // 画面に触れた＝選択画面は閉じている。まだファイルが届いていなければ「準備中」にする（キャンセルしていたら × で閉じられる）
 document.addEventListener('pointerdown', (e) => { if (pick.phase === 'open' && !e.target.closest('#pickWait')) setTimeout(() => { if (pick.phase === 'open') pickShow('prep'); }, 0); }, true);
 $('pwClose').addEventListener('click', pickHide);
-for (const id of ['file', 'addVideo', 'ovFile']) watchPick($(id));
+for (const id of ['file', 'addVideo', 'ovFile', 'stampFile']) watchPick($(id));
 
 $('file').addEventListener('change', (e) => { loadFiles(e.target.files); e.target.value = ''; });
 $('homeBtn').addEventListener('click', async () => { pause(); await saveNow(); show('start'); $('backToEdit').hidden = false; renderSavedList(); });

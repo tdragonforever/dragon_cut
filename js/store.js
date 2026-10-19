@@ -4,11 +4,12 @@ let dbp = null;
 function db() {
   if (!dbp) {
     dbp = new Promise((res, rej) => {
-      const r = indexedDB.open(DB, 1);
+      const r = indexedDB.open(DB, 2);
       r.onupgradeneeded = () => {
         const d = r.result;
         if (!d.objectStoreNames.contains('projects')) d.createObjectStore('projects', { keyPath: 'id' });
         if (!d.objectStoreNames.contains('files')) d.createObjectStore('files');
+        if (!d.objectStoreNames.contains('stamps')) d.createObjectStore('stamps', { keyPath: 'id' });
       };
       r.onsuccess = () => res(r.result);
       r.onerror = () => rej(r.error);
@@ -50,3 +51,7 @@ export async function deleteAllProjects() {
   await tx('projects', 'readwrite', (s) => s.clear());
   await tx('files', 'readwrite', (s) => s.clear());
 }
+// スタンプ（よく使う画像）。{ id, name, blob, thumb, w, h, created }。編集データとは別に保存し、手動で消すまで残る
+export const putStamp = (rec) => tx('stamps', 'readwrite', (s) => s.put(rec));
+export const deleteStamp = (id) => tx('stamps', 'readwrite', (s) => s.delete(id));
+export const listStamps = () => tx('stamps', 'readonly', (s) => req(s.getAll())).then((l) => l.sort((a, b) => b.created - a.created));

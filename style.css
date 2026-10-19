@@ -233,3 +233,12 @@ input[type=range] { accent-color: #7a8bff; }
 .logo-mark { width: 28px; height: 28px; border-radius: 7px; flex: none; box-shadow: 0 2px 10px rgba(255,80,60,.35); }
 .logo-t { font-family: -apple-system, "SF Pro Display", "Helvetica Neue", system-ui, sans-serif; font-size: 20px; font-weight: 700; letter-spacing: -.4px; color: #f5f5f7; }
 .logo-t b { font-weight: 700; background: linear-gradient(90deg, #FF3D6A, #FF7A2E 55%, #FFB21C); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* ---- スタンプ ---- */
+.stamp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 10px; margin: 10px 0; }
+.stamp { position: relative; aspect-ratio: 1; padding: 6px; border-radius: 12px; background: #2a2a2e repeating-conic-gradient(#333 0 25%, #2a2a2e 0 50%) 0 0 / 14px 14px; border: 1px solid rgba(255,255,255,.08); }
+.stamp img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.stamp.edit { animation: wiggle .25s ease-in-out infinite alternate; }
+@keyframes wiggle { from { transform: rotate(-1.5deg); } to { transform: rotate(1.5deg); } }
+.stamp-x { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; background: #ff453a; color: #fff; font-size: 14px; line-height: 22px; font-weight: 700; }
+.stamp-empty { grid-column: 1 / -1; padding: 16px; text-align: center; background: var(--card2); border-radius: 12px; }
