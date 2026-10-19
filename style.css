@@ -266,3 +266,12 @@ input[type=range] { accent-color: #7a8bff; }
 .paste-help summary { font-size: 12px; }
 .stamp-editbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; padding: 8px 10px; border-radius: 10px;
   background: rgba(56,225,255,.08); border: 1px solid rgba(56,225,255,.3); font-size: 14px; font-weight: 600; }
+
+/* ---- ホーム画面に追加する方法 ---- */
+.howto { margin-top: 16px; background: var(--card2); border-radius: 12px; padding: 4px 14px 2px; }
+.howto summary { font-size: 14px; font-weight: 600; color: var(--accent-text); padding: 10px 0; cursor: pointer; }
+.howto .help { background: transparent; padding: 0 0 8px; margin: 0; font-size: 13px; color: var(--text); }
+.howto ol { padding-left: 20px; margin: 4px 0 10px; line-height: 1.7; }
+.howto-os { margin: 12px 0 2px; font-size: 14px; }
+.share-ico { display: inline-flex; vertical-align: -3px; }
+.share-ico svg { width: 17px; height: 17px; fill: none; stroke: var(--accent-text); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
