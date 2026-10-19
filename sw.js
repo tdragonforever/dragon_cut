@@ -1,9 +1,9 @@
 // オフラインでも使えるようにするための Service Worker
 // アプリ本体: ネット優先（更新がすぐ反映される）、つながらなければキャッシュを使う
 // フォント: キャッシュ優先（一度使ったフォントはオフラインでも使える）
-const APP = 'app-v9';
+const APP = 'app-v10';
 const FONTS = 'fonts-v1';
-const SHELL = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png',
+const SHELL = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png',
   'js/app.js', 'js/project.js', 'js/render.js', 'js/fonts.js', 'js/audio.js', 'js/media.js', 'js/dsp.js', 'js/fx-worklet.js', 'js/fx-worker.js', 'js/gl.js', 'js/compose.js', 'js/store.js', 'js/vendor/mediabunny.min.mjs'];
 
 self.addEventListener('install', (e) => {

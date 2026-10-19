@@ -6,14 +6,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="動画編集">
+<meta name="apple-mobile-web-app-title" content="DraCut">
 <meta name="theme-color" content="#111113">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<title>動画編集</title>
+<title>DraCut</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -23,11 +23,27 @@
   <section id="start" class="screen">
     <header class="bar">
       <h1 class="logo" aria-label="DraCut">
-        <svg class="logo-mark" viewBox="0 0 32 32" aria-hidden="true">
-          <defs><linearGradient id="lg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#ff3d2e"/><stop offset=".55" stop-color="#ff8a1f"/><stop offset="1" stop-color="#ffd23f"/></linearGradient></defs>
-          <path d="M6 26c4-1 7-4 8-8 1 3 4 5 7 5-2-3-2-6 0-9 1 2 3 3 5 3-1-4-4-8-9-10 1 3 0 5-2 6-1-3-4-5-7-5 2 3 2 7-1 10-1 2-1 5-1 8z" fill="url(#lg)"/>
-        </svg>
-        <span class="logo-t"><span class="logo-a">Dra</span><span class="logo-b">Cut</span></span>
+        <svg class="logo-mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true">
+  <defs>
+    <linearGradient id="lm-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF2D6F"/>
+      <stop offset=".55" stop-color="#FF5A36"/>
+      <stop offset="1" stop-color="#FFB21C"/>
+    </linearGradient>
+    <radialGradient id="lm-hl" cx=".25" cy=".15" r=".8">
+      <stop offset="0" stop-color="#fff" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="lm-up"><polygon points="0,0 512,0 512,160.75 0,368.75"/></clipPath>
+    <clipPath id="lm-lo"><polygon points="0,368.75 512,160.75 512,512 0,512"/></clipPath>
+    <g id="lm-tri"><path d="M196 150 L196 362 L374 256 Z" fill="#fff" stroke="#fff" stroke-width="34" stroke-linejoin="round"/></g>
+  </defs>
+  <rect width="512" height="512" fill="url(#lm-bg)"/>
+  <rect width="512" height="512" fill="url(#lm-hl)"/>
+  <g transform="translate(-7 -13)"><use href="#lm-tri" clip-path="url(#lm-up)"/></g>
+  <g transform="translate(9 15)"><use href="#lm-tri" clip-path="url(#lm-lo)"/></g>
+</svg>
+        <span class="logo-t">Dra<b>Cut</b></span>
       </h1>
       <button class="pill" id="backToEdit" hidden>編集に戻る ›</button>
     </header>

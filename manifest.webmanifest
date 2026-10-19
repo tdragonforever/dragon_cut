@@ -1,6 +1,6 @@
 {
-  "name": "動画編集",
-  "short_name": "動画編集",
+  "name": "DraCut",
+  "short_name": "DraCut",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#000000",
