@@ -166,7 +166,7 @@ export async function exportVideo({ srcs, proj, buffers, overlayMedia = new Map(
   if (signal?.aborted) throw new DOMException('canceled', 'AbortError');
   const hasAudio = !!orig || proj.audios.some((a) => buffers.get(a.id)) || (proj.overlays || []).some((o) => o.type === 'video' && o.volume > 0 && buffers.get(o.mediaId));
   report('mix', 0);
-  const mix = hasAudio ? await mixProject(proj, orig, buffers, settings.afx, (k) => report('mix', k)) : null;
+  const mix = hasAudio ? await mixProject(proj, orig, buffers, settings.afx, (k) => report('mix', k), settings.afxAudio) : null;
   orig = null;
   report('mix', 1);
 

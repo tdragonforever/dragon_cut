@@ -62,12 +62,13 @@ const S = {
   curClip: null, // プレビュー中のクリップ（clipTimes の要素）
   t: 0, playing: false, pps: 40, sel: null, panel: null,
   history: [], hIndex: -1,
-  audio: { ctx: null, gain: null, nodes: [], elemOk: false, src: null, fx: null, fxLoading: null },
+  audio: { ctx: null, gain: null, nodes: [], fxNodes: [], elemOk: false, src: null, fx: null, fxLoading: null },
   expectScroll: -1,
   // 音声補正
   ovMedia: new Map(), // 重ねる素材 mediaId -> { type, file, url, bitmap, width, height, duration, fps, thumb }
   ovEls: new Map(), // 試聴用の <video>（重ねる動画クリップごと）
   analysis: null, afxWorker: null, afxReady: false, afxGain: 0, afxAB: 'proc', afxView: 'basic', afxSel: 1,
+  afxTarget: 'main', // 音声補正の対象（'main' = 動画の音声、それ以外は追加した音声の id）
 };
 const preview = $('preview');
 const pctx = preview.getContext('2d');
@@ -161,6 +162,9 @@ function resetProject() {
   S.analysis = null;
   S.afxReady = false;
   S.afxGain = 0;
+  S.afxTarget = 'main';
+  afxBufInfo = new WeakMap();
+  afxGains.clear();
   if (S.afxWorker) { S.afxWorker.terminate(); S.afxWorker = null; }
 }
 
@@ -540,7 +544,19 @@ async function play() {
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const g = ctx.createGain();
-    src.connect(g).connect(ctx.destination);
+    // 音声補正をかけた音声は、EQ・エフェクト（AudioWorklet）を通してから音量をかける
+    if (a.afx && a.afx.on && S.audio.fx) {
+      try {
+        const node = new AudioWorkletNode(ctx, 'fx-processor', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+        const p = afxParams(a.id);
+        node.port.postMessage({ type: 'params', params: p && S.afxAB !== 'orig' ? p : BYPASS });
+        node.port.onmessage = (e) => { if (e.data.type === 'peak' && S.afxTarget === a.id) showMeter(e.data.peak); };
+        src.connect(node).connect(g);
+        S.audio.fxNodes.push({ id: a.id, node });
+        prepAudioAfx(a);
+      } catch (e) { console.warn(e); src.connect(g); }
+    } else src.connect(g);
+    g.connect(ctx.destination);
     const when = a.start - S.t;
     const startAt = now + Math.max(0, when);
     const into = Math.max(0, -when);
@@ -607,6 +623,8 @@ function pause() {
   auxEl.pause();
   for (const n of S.audio.nodes) { try { n.stop(); } catch {} }
   S.audio.nodes = [];
+  for (const x of S.audio.fxNodes) { try { x.node.disconnect(); } catch {} }
+  S.audio.fxNodes = [];
   $('playIcon').innerHTML = '<path d="M8 5v14l11-7z"/>';
   if (S.curClip && S.cur && !S.cur.el.seeking) S.t = clamp(curTime(), S.curClip.start, Math.max(S.curClip.start, S.curClip.end - 0.001));
   S.t = clamp(S.t, 0, dur());
@@ -757,7 +775,7 @@ function renderTimeline() {
   lanesFor(p.overlays, 'overlay', 'overlay', ROW.overlay, (o) => (o.type === 'video' ? '🎞 ' : '🖼 ') + o.name,
     (o) => { const m = S.ovMedia.get(o.mediaId); return [m && m.thumb ? h('img', { class: 'ov-thumb', src: m.thumb }) : null, ...kfDots(o)]; });
   lanesFor(p.texts, 'text', 'text', ROW.text, (c) => 'T ' + c.text.replace(/\n/g, ' '), (c) => kfDots(c));
-  lanesFor(p.audios, 'audio', (a) => (a.kind === 'tts' ? 'tts' : 'audio'), ROW.audio, (a) => (a.kind === 'tts' ? '🗣 ' : '♪ ') + a.name,
+  lanesFor(p.audios, 'audio', (a) => (a.kind === 'tts' ? 'tts' : 'audio'), ROW.audio, (a) => (a.afx && a.afx.on ? '🎚' : '') + (a.kind === 'tts' ? '🗣 ' : '♪ ') + a.name,
     (a, w) => { const pk = S.peaks.get(a.id); return pk ? waveCanvas(pk, a.offset, a.offset + (a.end - a.start), w) : null; });
 
   if (!p.texts.length && !p.audios.length && !p.effects.length && !p.overlays.length) {
@@ -896,7 +914,7 @@ function renderCtxbar() {
   bar.hidden = false;
   if (kind === 'video') {
     bar.append(
-      h('button', { class: 'btn-accent', onclick: () => openPanel('audio') }, '🎚 音声補正'),
+      h('button', { class: 'btn-accent', onclick: () => openAfx('main') }, '🎚 音声補正'),
       h('button', { onclick: () => openPanel('speed') }, '速度・クリップ'),
       h('button', { onclick: () => openPanel('color') }, 'フィルター・動き'),
       h('button', { onclick: () => splitClip(id) }, '分割'),
@@ -909,6 +927,7 @@ function renderCtxbar() {
     return;
   }
   bar.append(
+    kind === 'audio' ? h('button', { class: 'btn-accent', onclick: () => openAfx(id) }, '🎚 音声補正') : null,
     h('button', { onclick: () => openItemPanel(kind, id) }, '編集'),
     h('button', { onclick: () => splitItem(kind, id) }, '分割'),
     h('button', { onclick: () => duplicateItem(kind, id) }, '複製'),
@@ -1494,6 +1513,7 @@ function buildAudio(body, a) {
     slider({ label: '音量', min: 0, max: 2, step: 0.01, get: () => a.volume, set: (v) => (a.volume = v), show: (v) => Math.round(v * 100) + '%', onChange: renderTimeline }),
     slider({ label: 'フェードイン', min: 0, max: 5, step: 0.1, get: () => a.fadeIn, set: (v) => (a.fadeIn = v), show: (v) => v.toFixed(1) + 's' }),
     slider({ label: 'フェードアウト', min: 0, max: 5, step: 0.1, get: () => a.fadeOut, set: (v) => (a.fadeOut = v), show: (v) => v.toFixed(1) + 's' })));
+  body.append(h('button', { class: 'btn-accent wide', onclick: () => openAfx(a.id) }, a.afx && a.afx.on ? '🎚 音声補正（EQ・エフェクト）オン ›' : '🎚 音声補正（EQ・エフェクト） ›'));
   body.append(sec('元の動画の音声', slider({ label: '元の音量', min: 0, max: 2, step: 0.01, get: () => S.proj.origVolume, set: (v) => { S.proj.origVolume = v; applyOrigVolume(); }, show: (v) => Math.round(v * 100) + '%' })));
   const info = h('span', { class: 'lbl' });
   const refresh = () => (info.textContent = `${fmt(a.start)} 〜 ${fmt(a.end)}`);
@@ -1706,8 +1726,7 @@ const FX_PRESETS = [
 const MINE_KEY = 'videdit.eqmine.v1';
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
-function newAfx() {
-  const a = S.analysis;
+function newAfx(a = null) {
   return {
     on: true, preset: 'natural', fxPreset: 'none', depth: 1,
     bands: a ? DSP.autoBands(a.auto) : clone(DSP.BAND_DEFS),
@@ -1716,6 +1735,43 @@ function newAfx() {
     fx: clone(FX_OFF),
   };
 }
+
+// 音声補正の対象。S.afxTarget が 'main'（動画の音声）か、追加した音声の id
+// 追加した音声の解析結果は音声データ（AudioBuffer）ごと、音量合わせの値は音声クリップごとに持つ
+let afxBufInfo = new WeakMap();
+const afxGains = new Map();
+const tgAudio = (tg) => (S.proj && tg !== 'main' ? S.proj.audios.find((a) => a.id === tg) : null);
+function tgAfx(tg = S.afxTarget) {
+  if (!S.proj) return null;
+  return tg === 'main' ? S.proj.afx : tgAudio(tg)?.afx || null;
+}
+function tgInfo(tg = S.afxTarget) {
+  if (tg === 'main') return { analysis: S.analysis, ready: S.afxReady };
+  const buf = S.buffers.get(tg);
+  return (buf && afxBufInfo.get(buf)) || { analysis: null, ready: false };
+}
+const tgAnalysis = (tg = S.afxTarget) => tgInfo(tg).analysis;
+const tgGain = (tg) => (tg === 'main' ? S.afxGain : afxGains.get(tg) || 0);
+const setTgGain = (tg, g) => (tg === 'main' ? (S.afxGain = g) : afxGains.set(tg, g));
+
+// 追加した音声を解析する（自動EQ・音量合わせの準備）。同じ音声データは1回だけ
+function analyzeAudio(tg) {
+  const buf = S.buffers.get(tg);
+  if (!buf || !S.afxWorker) return Promise.resolve(tgInfo(tg));
+  let r = afxBufInfo.get(buf);
+  if (!r) {
+    r = { key: newId('b'), analysis: null, ready: false };
+    const L = buf.getChannelData(0), R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
+    r.promise = afxCall('setBuf', { key: r.key, L, R })
+      .then(() => afxCall('analyze', { key: r.key }))
+      .then(({ analysis }) => { r.analysis = analysis; r.ready = analysis ? true : 'none'; })
+      .catch((e) => { console.warn('afx analysis', e); r.ready = 'none'; })
+      .then(() => r);
+    afxBufInfo.set(buf, r);
+  }
+  return r.promise;
+}
+const afxKey = (tg) => (tg === 'main' ? undefined : tgInfo(tg).key);
 
 // 解析用ワーカー
 let afxReq = 0;
@@ -1759,65 +1815,95 @@ function afxSourcesChanged() {
       S.analysis = analysis;
       S.afxReady = analysis ? true : 'none';
       if (analysis && S.proj.afx && S.proj.afx.untouched) { S.proj.afx.bands = DSP.autoBands(analysis.auto); delete S.proj.afx.untouched; }
-      afxChanged(false);
-      if (S.panel === 'audio' && (first || !S.proj.afx)) openPanel('audio');
+      afxChanged(false, 'main');
+      if (S.panel === 'audio' && S.afxTarget === 'main' && (first || !S.proj.afx)) openPanel('audio');
     } catch (e) {
       console.warn('afx analysis', e);
       if (!S.analysis) S.afxReady = 'none';
-      if (S.panel === 'audio') openPanel('audio');
+      if (S.panel === 'audio' && S.afxTarget === 'main') openPanel('audio');
     }
   }, 700);
 }
 
-function afxParams() {
-  const a = S.proj && S.proj.afx;
+function afxParams(tg = 'main') {
+  const a = tgAfx(tg);
   if (!a || !a.on) return null;
-  const inGain = S.analysis ? S.analysis.inGain : 0;
-  return { inGain, hpf: 32, bands: a.bands, depth: a.depth, drum: a.drum, fx: a.fx, outGain: a.loud === 'off' ? -inGain : S.afxGain, limit: true, bypass: false };
+  const an = tgAnalysis(tg);
+  const inGain = an ? an.inGain : 0;
+  return { inGain, hpf: 32, bands: a.bands, depth: a.depth, drum: a.drum, fx: a.fx, outGain: a.loud === 'off' ? -inGain : tgGain(tg), limit: true, bypass: false };
 }
+const BYPASS = { bypass: true, bands: [], drum: EQ_PRESETS.natural.drum };
 function pushAfx() {
-  const n = S.audio.fx;
-  if (!n) return;
-  const p = afxParams();
-  n.port.postMessage({ type: 'params', params: p && S.afxAB !== 'orig' ? p : { bypass: true, bands: [], drum: EQ_PRESETS.natural.drum } });
+  const send = (n, tg) => { const p = afxParams(tg); n.port.postMessage({ type: 'params', params: p && S.afxAB !== 'orig' ? p : BYPASS }); };
+  if (S.audio.fx) send(S.audio.fx, 'main');
+  for (const x of S.audio.fxNodes || []) send(x.node, x.id);
 }
 
 // 音量合わせ（設定が変わるたびに、少し待ってから計算し直す）
 let gainTimer = 0, gainSeq = 0;
-function scheduleAfxGain(delay = 350) {
+function scheduleAfxGain(delay = 350, tg = S.afxTarget) {
   clearTimeout(gainTimer);
-  const a = S.proj && S.proj.afx;
-  if (!a || !a.on || a.loud === 'off' || S.afxReady !== true) return;
+  const a = tgAfx(tg);
+  if (!a || !a.on || a.loud === 'off' || tgInfo(tg).ready !== true) return;
   gainTimer = setTimeout(async () => {
     const seq = ++gainSeq;
     try {
-      const r = await afxCall('gain', { params: { ...afxParams(), outGain: 0 }, target: LOUD[a.loud], quick: true });
+      const r = await afxCall('gain', { key: afxKey(tg), params: { ...afxParams(tg), outGain: 0 }, target: LOUD[a.loud], quick: true });
       if (seq !== gainSeq) return;
-      S.afxGain = r.gain;
+      setTgGain(tg, r.gain);
       pushAfx();
     } catch (e) { console.warn(e); }
   }, delay);
 }
-function afxChanged(gain = true) {
+function afxChanged(gain = true, tg = S.afxTarget) {
   pushAfx();
-  if (gain) scheduleAfxGain();
-  else scheduleAfxGain(0);
+  scheduleAfxGain(gain ? 350 : 0, tg);
   drawEqGraph();
 }
 
+// 補正をかけた追加音声を鳴らす前に、解析と音量合わせを済ませておく（済んでいなければ）
+async function prepAudioAfx(a) {
+  if (!a.afx || !a.afx.on) return;
+  const info = await analyzeAudio(a.id);
+  if (info.ready !== true || a.afx.loud === 'off' || afxGains.has(a.id)) return;
+  try {
+    const r = await afxCall('gain', { key: info.key, params: { ...afxParams(a.id), outGain: 0 }, target: LOUD[a.afx.loud], quick: true });
+    setTgGain(a.id, r.gain);
+    pushAfx();
+  } catch (e) { console.warn(e); }
+}
+
 // 書き出し前に音量合わせを正確に計算し直す（onProgress(0〜1)）
-const afxNeedsGain = () => { const a = S.proj && S.proj.afx; return !!(a && a.on && a.loud !== 'off' && S.afxReady === true); };
-async function afxExportParams(onProgress) {
-  const p = afxParams();
+const afxOnAudios = () => (S.proj ? S.proj.audios.filter((a) => a.afx && a.afx.on && S.buffers.get(a.id)) : []);
+const afxNeedsGain = () => {
+  const a = S.proj && S.proj.afx;
+  return !!(a && a.on && a.loud !== 'off' && S.afxReady === true) || afxOnAudios().some((x) => x.afx.loud !== 'off');
+};
+async function afxExportParams(onProgress, tg = 'main') {
+  const p = afxParams(tg);
   if (!p) return null;
-  const a = S.proj.afx;
-  if (afxNeedsGain()) {
+  const a = tgAfx(tg);
+  if (a.loud !== 'off' && tgInfo(tg).ready === true) {
     try {
-      const r = await afxCall('gain', { params: { ...p, outGain: 0 }, target: LOUD[a.loud], quick: false }, [], onProgress);
+      const r = await afxCall('gain', { key: afxKey(tg), params: { ...p, outGain: 0 }, target: LOUD[a.loud], quick: false }, [], onProgress);
       p.outGain = r.gain;
     } catch (e) { console.warn(e); }
   }
   return p;
+}
+// 書き出し用: 動画の音声と、補正をかけた追加音声それぞれの設定 { main, audios: { id: params } }
+async function afxExportAll(onProgress) {
+  const list = afxOnAudios();
+  for (const a of list) await analyzeAudio(a.id);
+  const n = 1 + list.length;
+  const main = await afxExportParams((k) => onProgress(k / n));
+  const audios = {};
+  for (let i = 0; i < list.length; i++) {
+    const p = await afxExportParams((k) => onProgress((i + 1 + k) / n), list[i].id);
+    if (p) audios[list[i].id] = p;
+  }
+  onProgress(1);
+  return { main, audios };
 }
 
 // 試聴用 AudioWorklet（<video> の音声 → EQ・エフェクト → 音量 → スピーカー）
@@ -1831,7 +1917,7 @@ async function loadFxWorklet() {
       await A.ctx.audioWorklet.addModule(url);
       URL.revokeObjectURL(url);
       const node = new AudioWorkletNode(A.ctx, 'fx-processor', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
-      node.port.onmessage = (e) => { if (e.data.type === 'peak') showMeter(e.data.peak); };
+      node.port.onmessage = (e) => { if (e.data.type === 'peak' && S.afxTarget === 'main') showMeter(e.data.peak); };
       A.mix.disconnect();
       A.mix.connect(node).connect(A.gain);
       A.fx = node;
@@ -1863,7 +1949,7 @@ const fmtF = (f) => (f >= 1000 ? Math.round(f / 100) / 10 + 'k' : Math.round(f))
 
 function drawEqGraph() {
   const svg = document.getElementById('eqGraph');
-  const a = S.proj && S.proj.afx;
+  const a = tgAfx();
   if (!svg || !a) return;
   const resp = DSP.eqResponse(a.bands, a.depth, SR, 32, GFREQS);
   let html = '<defs><linearGradient id="eqFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5e9cff" stop-opacity=".45"/><stop offset="1" stop-color="#b45cff" stop-opacity="0"/></linearGradient>'
@@ -1871,8 +1957,9 @@ function drawEqGraph() {
   for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000]) html += `<line class="grid" x1="${gfx(f)}" x2="${gfx(f)}" y1="0" y2="${GH}"/>`;
   for (const g of [-12, -6, 6, 12]) html += `<line class="grid" x1="0" x2="${GW}" y1="${ggy(g)}" y2="${ggy(g)}"/><text x="3" y="${ggy(g) - 2}">${fmtG(g)}</text>`;
   html += `<line class="zero" x1="0" x2="${GW}" y1="${ggy(0)}" y2="${ggy(0)}"/>`;
-  if (S.analysis) {
-    const pts = S.analysis.ltas.filter((b) => b.f >= 20 && b.f <= 20000);
+  const an = tgAnalysis();
+  if (an) {
+    const pts = an.ltas.filter((b) => b.f >= 20 && b.f <= 20000);
     html += `<path class="spec" d="${pts.map((b, i) => (i ? 'L' : 'M') + gfx(b.f).toFixed(1) + ' ' + ggy(clamp(b.db * 0.45, -13, 13)).toFixed(1)).join('')}"/>`;
   }
   const line = resp.map((r, i) => (i ? 'L' : 'M') + gfx(GFREQS[i]).toFixed(1) + ' ' + ggy(clamp(r, -14, 14)).toFixed(1)).join('');
@@ -1890,7 +1977,7 @@ function bindEqDrag(svg) {
     return { x: ((e.clientX - r.left) / r.width) * GW, y: ((e.clientY - r.top) / r.height) * GH };
   };
   svg.addEventListener('pointerdown', (e) => {
-    const a = S.proj.afx, p = toLocal(e);
+    const a = tgAfx(), p = toLocal(e);
     let best = -1, bd = 1e9;
     a.bands.forEach((b, i) => {
       const d = Math.hypot(gfx(b.f) - p.x, ggy(b.g * a.depth) - p.y);
@@ -1905,7 +1992,7 @@ function bindEqDrag(svg) {
   });
   svg.addEventListener('pointermove', (e) => {
     if (!drag || drag.id !== e.pointerId) return;
-    const a = S.proj.afx, p = toLocal(e), b = a.bands[S.afxSel];
+    const a = tgAfx(), p = toLocal(e), b = a.bands[S.afxSel];
     b.f = Math.round(clamp(gxf(p.x), 25, 18000));
     b.g = Math.round(clamp(gyg(p.y) / (a.depth || 1), -12, 12) * 2) / 2;
     a.preset = '';
@@ -1920,8 +2007,9 @@ function bindEqDrag(svg) {
 
 function loadMine() { try { return JSON.parse(localStorage.getItem(MINE_KEY) || 'null'); } catch { return null; } }
 function applyEqPreset(name) {
-  const a = S.proj.afx;
-  const auto = S.analysis ? DSP.autoBands(S.analysis.auto) : clone(DSP.BAND_DEFS);
+  const a = tgAfx();
+  const an = tgAnalysis();
+  const auto = an ? DSP.autoBands(an.auto) : clone(DSP.BAND_DEFS);
   if (name === 'mine') {
     const m = loadMine();
     if (!m) return;
@@ -1939,8 +2027,9 @@ function applyEqPreset(name) {
   delete a.untouched;
 }
 function saveMine() {
-  const a = S.proj.afx;
-  const auto = S.analysis ? DSP.autoBands(S.analysis.auto) : clone(DSP.BAND_DEFS);
+  const a = tgAfx();
+  const an = tgAnalysis();
+  const auto = an ? DSP.autoBands(an.auto) : clone(DSP.BAND_DEFS);
   const bands = {};
   for (const b of a.bands) {
     const x = auto.find((y) => y.id === b.id);
@@ -1954,23 +2043,35 @@ function saveMine() {
   } catch { toast('保存できませんでした'); }
 }
 
+// 音声補正の画面を開く。tg: 'main'（動画の音声）か、追加した音声の id
+function openAfx(tg) {
+  S.afxTarget = tg;
+  S.afxView = 'basic';
+  openPanel('audio');
+}
+
 function buildAudioFx(body) {
-  const p = S.proj;
   ensureAudioCtx();
-  if (![...S.srcs.values()].some((x) => x.info.hasAudio)) {
+  if (S.afxTarget !== 'main' && !tgAudio(S.afxTarget)) S.afxTarget = 'main';
+  const tg = S.afxTarget, isMain = tg === 'main';
+  const owner = isMain ? S.proj : tgAudio(tg);
+  if (isMain && ![...S.srcs.values()].some((x) => x.info.hasAudio)) {
     body.append(h('p', { class: 'lbl' }, 'この動画には音声がありません。'));
     return;
   }
-  if (!p.afx) {
-    if (S.afxReady !== true && S.afxReady !== 'none') {
+  if (!owner.afx) {
+    if (!isMain) analyzeAudio(tg).then(() => { if (S.panel === 'audio' && S.afxTarget === tg) openPanel('audio'); });
+    const ready = tgInfo(tg).ready;
+    if (ready !== true && ready !== 'none') {
       body.append(h('div', { class: 'center-row' }, h('div', { class: 'spinner sm' }), h('span', { class: 'lbl' }, '音を解析中…（自動EQの準備）')));
       return;
     }
-    p.afx = newAfx();
+    owner.afx = newAfx(tgAnalysis(tg));
     commit();
     afxChanged(false);
   }
-  const a = p.afx;
+  const a = owner.afx;
+  const an = tgAnalysis(tg);
   // 値が変わったときの共通処理
   const ch = (fn, keepPreset) => (v) => { fn(v); if (!keepPreset) a.preset = ''; delete a.untouched; afxChanged(); };
 
@@ -1984,7 +2085,7 @@ function buildAudioFx(body) {
     h('div', { class: 'meter' }, h('div', { id: 'afxMeter' })));
 
   if (S.afxView === 'detail') {
-    $('panelTitle').textContent = '詳細EQ';
+    $('panelTitle').textContent = isMain ? '詳細EQ' : `詳細EQ（${owner.name}）`;
     body.append(head);
     body.append(h('button', { class: 'link', onclick: () => { S.afxView = 'basic'; openPanel('audio'); } }, '‹ 基本に戻る'));
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -2011,9 +2112,9 @@ function buildAudioFx(body) {
     return;
   }
 
-  $('panelTitle').textContent = '音声補正';
+  $('panelTitle').textContent = isMain ? '音声補正' : `音声補正（${owner.name}）`;
   body.append(head);
-  body.append(toggle({ label: '動画の音声を補正する', get: () => a.on, set: (v) => { a.on = v; afxChanged(); renderTimeline(); } }));
+  body.append(toggle({ label: isMain ? '動画の音声を補正する' : 'この音声を補正する', get: () => a.on, set: (v) => { a.on = v; afxChanged(); renderTimeline(); } }));
 
   const band = (id) => a.bands.find((b) => b.id === id);
   const macro = (label, id, min, max, invert) => slider({
@@ -2024,7 +2125,7 @@ function buildAudioFx(body) {
   });
   const mine = loadMine();
   body.append(h('div', { class: 'card' },
-    h('div', { class: 'card-head' }, h('span', { class: 'sec-title' }, '自動EQ'), h('span', { class: 'badge' }, S.analysis ? S.analysis.kind : '解析なし')),
+    h('div', { class: 'card-head' }, h('span', { class: 'sec-title' }, '自動EQ'), h('span', { class: 'badge' }, an ? an.kind : '解析なし')),
     slider({ label: '効き具合', min: 0, max: 150, step: 5, get: () => Math.round(a.depth * 100), set: ch((v) => (a.depth = v / 100), true), show: (v) => v + '%' }),
     h('div', { class: 'sec-title' }, 'プリセット'),
     chips({
@@ -2081,7 +2182,7 @@ function buildAudioFx(body) {
     h('div', { class: 'sec-title' }, '音量'),
     chips({ options: [{ v: 'loud', label: '大音量（-10.5 LUFS）' }, { v: 'normal', label: '標準（-14 LUFS）' }, { v: 'off', label: 'そのまま' }], get: () => a.loud, set: (v) => { a.loud = v; afxChanged(); } }),
     h('p', { class: 'lbl' }, '大音量・標準は、補正後の音を自動で決まった大きさに揃えます（音割れ防止つき）。')));
-  body.append(h('p', { class: 'lbl' }, 'タイムラインで動画を選んでもこの画面を開けます。再生しながら調整できます。'));
+  body.append(h('p', { class: 'lbl' }, isMain ? 'タイムラインで動画を選んでもこの画面を開けます。再生しながら調整できます。' : 'この音声だけに補正がかかります。再生しながら調整できます。'));
   refreshPanelValues();
 }
 
@@ -2753,6 +2854,7 @@ $('tools').addEventListener('click', (e) => {
   else if (tool === 'color') openPanel('color');
   else if (tool === 'addvideo') { $('addVideo').value = ''; $('addVideo').click(); }
   else if (tool === 'effect') openPanel('effectPick');
+  else if (tool === 'audio') openAfx('main');
   else openPanel(tool);
 });
 $('audioFile').addEventListener('change', async (e) => {
@@ -2944,17 +3046,17 @@ async function startExport() {
     const jobs = EXP.split
       ? groupsOf(S.proj).map((g, k) => ({ proj: subProject(S.proj, g), name: `${base}_${stamp}_${String(k + 1).padStart(2, '0')}` }))
       : [{ proj: S.proj, name: null }];
-    const useAfx = !!afxParams();
+    const useAfx = !!afxParams() || afxOnAudios().length > 0;
     prog = new ExportProgress(jobs, { gain: afxNeedsGain(), gainSeconds: dur(), afx: useAfx });
     if (afxNeedsGain()) prog.set('gain', -1, 0, '補正後の音の大きさを、目標の音量に合わせる計算をしています');
-    const afx = await afxExportParams((k) => prog.set('gain', -1, k));
+    const afx = await afxExportAll((k) => prog.set('gain', -1, k));
     const results = [];
     for (let k = 0; k < jobs.length; k++) {
       const job = jobs[k];
       $('runTitle').textContent = '書き出し中…' + (jobs.length > 1 ? `（${k + 1}/${jobs.length}本目）` : '');
       const res = await exportVideo({
         srcs: S.srcs, proj: job.proj, buffers: S.buffers, overlayMedia: S.ovMedia,
-        settings: { ...EXP, afx, name: job.name },
+        settings: { ...EXP, afx: afx.main, afxAudio: afx.audios, name: job.name },
         signal: exportAbort.signal,
         onProgress: (phase, kk, extra) => {
           if (phase === 'decode') prog.set('decode', k, kk, '動画の音声を取り出しています');

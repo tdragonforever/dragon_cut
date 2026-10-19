@@ -124,7 +124,8 @@ export async function timeStretch(chs, speed, keepPitch = true, onProgress) {
 // buffers: Map(audioClipId -> AudioBuffer)
 // afx: 動画の音声にかける EQ・エフェクトの設定（dsp.js の Chain の params）。null なら何もしない
 // onProgress(0〜1)
-export async function mixProject(p, orig, buffers, afx = null, onProgress) {
+// afxAudio: 追加した音声ごとの EQ・エフェクトの設定 { 音声クリップの id: params }
+export async function mixProject(p, orig, buffers, afx = null, onProgress, afxAudio = null) {
   const total = Math.ceil(timelineDuration(p) * SR);
   const L = new Float32Array(total), R = new Float32Array(total);
 
@@ -141,10 +142,20 @@ export async function mixProject(p, orig, buffers, afx = null, onProgress) {
   const clips = [...p.audios.map((a) => [a, buffers.get(a.id)]), ...(p.overlays || []).filter((o) => o.type === 'video').map((o) => [o, buffers.get(o.mediaId)])];
   for (const [a, buf] of clips) {
     if (!buf || a.volume <= 0) continue;
-    const l = buf.getChannelData(0), r = buf.numberOfChannels > 1 ? buf.getChannelData(1) : l;
+    let l = buf.getChannelData(0), r = buf.numberOfChannels > 1 ? buf.getChannelData(1) : l;
     const s0 = Math.max(0, Math.round(a.start * SR));
     const s1 = Math.min(total, Math.round(a.end * SR));
-    const off = Math.round(a.offset * SR) - Math.round(a.start * SR);
+    let off = Math.round(a.offset * SR) - Math.round(a.start * SR);
+    // 音声補正をかけるときは、使う部分だけを切り出して処理する
+    const fx = afxAudio && afxAudio[a.id];
+    if (fx && globalThis.DSP) {
+      const from = Math.max(0, Math.round(a.offset * SR));
+      const to = Math.min(l.length, from + Math.round((a.end - a.start) * SR));
+      if (to > from) {
+        [l, r] = await processBuffersAsync(SR, l.subarray(from, to), r.subarray(from, to), fx);
+        off -= from;
+      }
+    }
     const clipLen = (a.end - a.start) * SR;
     const fi = a.fadeIn * SR, fo = a.fadeOut * SR;
     for (let i = s0; i < s1; i++) {
