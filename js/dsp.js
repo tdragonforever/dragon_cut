@@ -1,4 +1,4 @@
-// 音声処理（ライブEQ から移植＋エフェクト追加）。試聴（AudioWorklet）、解析用ワーカー、書き出しで共用する。
+// 音声処理（EQ・ドラムコンプ・音量合わせ＋エフェクト）。試聴（AudioWorklet）、解析用ワーカー、書き出しで共用する。
 // クラシックスクリプト: globalThis.DSP を定義する。worklet に連結して読み込めるよう import は使わない。
 (function (G) {
   'use strict';
