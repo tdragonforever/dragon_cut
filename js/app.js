@@ -10,6 +10,7 @@ import { FONTS, fontByKey, addFontCss, ensureFont } from './fonts.js';
 import { decodeAudioFile, computePeaks, resample, SR } from './audio.js';
 import { openVideo, decodeSourceAudio, exportVideo, detectEncoders, bitrateFor } from './media.js';
 import { CanvasSink } from './vendor/mediabunny.min.mjs';
+import { openCutout } from './cutout.js';
 import { drawMain, TRANSITIONS, MOTIONS } from './compose.js';
 import { COLOR_PRESETS, defaultColor, defaultChroma, applyColorPreset, colorActive, edgeColor } from './gl.js';
 import { resolveKf } from './render.js';
@@ -2572,7 +2573,7 @@ const STAMP_MAX = 1600; // 長い辺の上限（容量の節約）
 let stampEdit = false;
 
 // 画像を読み込み、大きすぎるものは縮めて保存用のデータにする
-async function makeStamp(file) {
+async function makeStamp(file, keep = {}) {
   const bmp = await createImageBitmap(file);
   const k = Math.min(1, STAMP_MAX / Math.max(bmp.width, bmp.height));
   const w = Math.max(1, Math.round(bmp.width * k)), hh = Math.max(1, Math.round(bmp.height * k));
@@ -2588,12 +2589,14 @@ async function makeStamp(file) {
   t.width = Math.max(1, Math.round(w * tk)); t.height = Math.max(1, Math.round(hh * tk));
   t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
   bmp.close && bmp.close();
-  return { id: newId('st'), name: file.name.replace(/\.[^.]+$/, '') || 'スタンプ', blob, type: blob.type || type, thumb: t.toDataURL('image/png'), w, h: hh, created: Date.now() };
+  return { id: newId('st'), name: (file.name || '').replace(/\.[^.]+$/, '') || 'スタンプ', blob, type: blob.type || type, thumb: t.toDataURL('image/png'), w, h: hh, created: Date.now(), ...keep };
 }
 
 async function addStampFiles(files) {
   files = [...(files || [])];
   if (!files.length) return;
+  // 1枚なら切り抜き画面を開く。複数ならそのまま登録（あとで「編集」から切り抜ける）
+  if (files.length === 1) { await cutAndSave(files[0], files[0].name); return; }
   let ok = 0;
   for (let i = 0; i < files.length; i++) {
     toast(`スタンプに登録中…（${i + 1}/${files.length}）`, 30000);
@@ -2601,10 +2604,47 @@ async function addStampFiles(files) {
   }
   $('toast').hidden = true;
   requestPersist();
-  toast(ok ? `${ok}個のスタンプを登録しました` : '登録できませんでした（容量不足の可能性があります）');
+  toast(ok ? `${ok}個のスタンプを登録しました（切り抜きは「編集」から）` : '登録できませんでした（容量不足の可能性があります）', 3000);
   if (S.panel === 'stamps') openPanel('stamps');
 }
 $('stampFile').addEventListener('change', (e) => { addStampFiles(e.target.files); e.target.value = ''; });
+
+
+// 切り抜き画面を開いて、結果をスタンプとして保存する。old があれば置き換え（old は削除）
+async function cutAndSave(blob, name, old) {
+  let r;
+  try { r = await openCutout(blob, { title: old ? 'スタンプを編集' : 'スタンプに登録', canDelete: !!old }); }
+  catch (e) { console.error(e); toast('この画像は開けませんでした'); return; }
+  if (!r) return;
+  try {
+    if (r.deleted) { await deleteStamp(old.id); toast('スタンプを削除しました'); }
+    else {
+      const f = new File([r.blob], (name || 'スタンプ').replace(/\.[^.]+$/, '') + '.png', { type: 'image/png' });
+      // 編集したときは新しいスタンプとして保存する（すでに動画に置いた分は元のまま）
+      await putStamp(await makeStamp(f, old ? { created: old.created } : {}));
+      if (old) await deleteStamp(old.id);
+      requestPersist();
+      toast(old ? 'スタンプを更新しました' : 'スタンプを登録しました');
+    }
+  } catch (e) { console.error(e); toast('保存できませんでした（容量不足の可能性があります）'); }
+  if (S.panel === 'stamps') openPanel('stamps');
+}
+
+// 貼り付けで登録（iPhone の「被写体を持ち上げてコピー」と組み合わせる）
+async function pasteStamp() {
+  if (!navigator.clipboard || !navigator.clipboard.read) { toast('このブラウザは貼り付けに対応していません（iPhone・iPadのSafariで使えます）', 3500); return; }
+  try {
+    const items = await navigator.clipboard.read();
+    for (const it of items) {
+      const type = it.types.find((t) => t.startsWith('image/'));
+      if (type) { const b = await it.getType(type); await cutAndSave(b, '貼り付け'); return; }
+    }
+    toast('コピーされた画像がありません。先に写真アプリで被写体を長押しして「コピー」してください', 4000);
+  } catch (e) {
+    console.warn(e);
+    toast('貼り付けできませんでした。もう一度ボタンを押して「ペースト」を選んでください', 3500);
+  }
+}
 
 // スタンプを再生位置に置く
 async function placeStamp(st) {
@@ -2633,11 +2673,20 @@ async function buildStamps(body) {
   const grid = h('div', { class: 'stamp-grid' });
   body.append(h('div', { class: 'btn-row' },
     h('button', { class: 'btn-accent', onclick: () => { $('stampFile').value = ''; $('stampFile').click(); } }, '＋ 写真から追加'),
-    h('button', { onclick: () => { stampEdit = !stampEdit; openPanel('stamps'); } }, stampEdit ? '完了' : '編集（削除）')));
+    h('button', { onclick: pasteStamp }, '📋 貼り付け（iPhoneのみ）'),
+    h('button', { onclick: () => { stampEdit = !stampEdit; openPanel('stamps'); } }, stampEdit ? '完了' : '編集')));
+  if (!stampEdit) body.append(h('details', { class: 'paste-help' },
+    h('summary', {}, '「貼り付け」の使い方（iPhone・iPad専用）'),
+    h('div', { class: 'help' },
+      h('ol', {},
+        h('li', {}, 'iPhoneの写真アプリで写真を開き、人物や物を長押しする（ふちが光る）'),
+        h('li', {}, '「コピー」を選ぶ（背景が消えた画像がコピーされます）'),
+        h('li', {}, 'DraCutに戻って「📋 貼り付け（iPhoneのみ）」→「ペースト」')),
+      h('p', {}, 'iPhone・iPad（iOS 16以降）の機能を使います。Androidやパソコンでは使えません。切り抜きはiPhoneの中で行われ、外部には送信されません。'))));
   body.append(grid);
   body.append(h('p', { class: 'lbl' }, stampEdit
-    ? '× を押すとスタンプを削除します。すでに動画に置いたスタンプは消えません。'
-    : 'タップすると、再生位置（白い線）にスタンプを置きます。登録した画像はアプリ内に保存されるので、写真アプリの元の画像を消しても使えます。'));
+    ? 'スタンプをタップすると切り抜き・フチをやり直せます。× で削除します。すでに動画に置いたスタンプは変わりません。'
+    : 'タップすると、再生位置（白い線）にスタンプを置きます。写真から追加すると切り抜き画面が開きます（背景を自動で消す・なぞって切り抜く・消しゴム・形・ステッカー風のフチ）。登録した画像はアプリ内に保存されるので、元の画像を消しても使えます。'));
   let list = [];
   try { list = await listStamps(); } catch (e) { console.warn(e); }
   if (!list.length) {
@@ -2645,13 +2694,16 @@ async function buildStamps(body) {
     return;
   }
   for (const st of list) {
-    const cell = h('button', { class: 'stamp' + (stampEdit ? ' edit' : ''), 'aria-label': st.name, onclick: async () => {
-      if (stampEdit) {
-        if (!confirm(`スタンプ「${st.name}」を削除しますか？`)) return;
-        await deleteStamp(st.id);
-        openPanel('stamps');
-      } else placeStamp(st);
-    } }, h('img', { src: st.thumb, alt: '' }), stampEdit ? h('span', { class: 'stamp-x' }, '×') : null);
+    const del = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`スタンプ「${st.name}」を削除しますか？`)) return;
+      await deleteStamp(st.id);
+      openPanel('stamps');
+    };
+    const cell = h('button', { class: 'stamp' + (stampEdit ? ' edit' : ''), 'aria-label': st.name, onclick: () => {
+      if (stampEdit) cutAndSave(st.blob, st.name, st);
+      else placeStamp(st);
+    } }, h('img', { src: st.thumb, alt: '' }), stampEdit ? h('span', { class: 'stamp-x', onclick: del }, '×') : null);
     grid.append(cell);
   }
 }

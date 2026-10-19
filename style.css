@@ -245,3 +245,22 @@ input[type=range] { accent-color: #7a8bff; }
 @keyframes wiggle { from { transform: rotate(-1.5deg); } to { transform: rotate(1.5deg); } }
 .stamp-x { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; background: #ff453a; color: #fff; font-size: 14px; line-height: 22px; font-weight: 700; }
 .stamp-empty { grid-column: 1 / -1; padding: 16px; text-align: center; background: var(--card2); border-radius: 12px; }
+
+/* ---- 切り抜き画面 ---- */
+.cut-wrap { position: fixed; inset: 0; z-index: 90; background: #0b0b0d; display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+.cut-bar { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 10px; flex: none; }
+.cut-title { font-weight: 600; }
+.cut-btn { border: none; font-size: 15px; padding: 6px 12px; }
+.primary-s { background: var(--accent); color: #fff; border-radius: 999px; font-weight: 600; padding: 6px 18px; }
+.cut-stage { position: relative; flex: 1 1 auto; min-height: 0; touch-action: none; }
+.cut-view { position: absolute; inset: 0; display: block; touch-action: none; }
+.cut-panel { flex: none; background: var(--card); border-top: 1px solid var(--hair); padding: 8px 12px 10px; max-height: 42dvh; overflow-y: auto; }
+.cut-tools { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
+.cut-tools::-webkit-scrollbar { display: none; }
+.cut-tools .chip { flex: none; }
+.cut-opt { min-height: 60px; }
+.cut-row { display: flex; gap: 8px; margin: 6px 0; }
+.cut-row button { flex: 1; font-size: 13px; padding: 8px 6px; }
+.cut-row .danger { color: var(--danger); }
+.paste-help summary { font-size: 12px; }

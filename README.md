@@ -40,6 +40,7 @@ iPhone の Safari で動く、CapCut の簡易版のような動画編集アプ�
 | `js/media.js` | 動画の読み込みと書き出し（[Mediabunny](https://mediabunny.dev/) + WebCodecs） |
 | `js/compose.js` | メイン動画の1フレームの組み立て（クリップ・トランジション・ズームパン・色調補正） |
 | `js/gl.js` | 色調補正・フィルター・グリーンバック合成（WebGL） |
+| `js/cutout.js` | スタンプの切り抜き画面（自動で背景を消す・なぞる・消しゴム／戻す・形・ステッカー風のフチ） |
 | `js/store.js` | 編集内容の保存（IndexedDB） |
 | `js/dsp.js` | 音声補正とエフェクトの処理（ライブEQ から移植）。試聴・解析・書き出しで共用 |
 | `js/fx-worklet.js` | 試聴用。再生中の動画の音声にリアルタイムで補正をかける（AudioWorklet） |
