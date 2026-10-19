@@ -920,6 +920,9 @@ function select(kind, id) {
   requestDraw();
 }
 
+// null や false（条件つきで出さないボタン）を飛ばして追加する（そのまま append すると「null」と表示される）
+const appendAll = (el, ...kids) => el.append(...kids.filter(Boolean));
+
 function renderCtxbar() {
   const bar = $('ctxbar');
   bar.innerHTML = '';
@@ -929,7 +932,7 @@ function renderCtxbar() {
   if (!item) { bar.hidden = true; return; }
   bar.hidden = false;
   if (kind === 'video') {
-    bar.append(
+    appendAll(bar,
       h('button', { class: 'btn-accent', onclick: () => openAfx('main') }, '🎚 音声補正'),
       h('button', { onclick: () => openPanel('speed') }, '速度・クリップ'),
       item.tf ? h('button', { onclick: () => { delete item.tf; commit(); renderCtxbar(); requestDraw(); } }, '枠に合わせる') : null,
@@ -943,7 +946,7 @@ function renderCtxbar() {
     );
     return;
   }
-  bar.append(
+  appendAll(bar,
     kind === 'audio' ? h('button', { class: 'btn-accent', onclick: () => openAfx(id) }, '🎚 音声補正') : null,
     h('button', { onclick: () => openItemPanel(kind, id) }, '編集'),
     h('button', { onclick: () => splitItem(kind, id) }, '分割'),
