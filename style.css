@@ -337,22 +337,33 @@ html.standalone .screen { padding-top: calc(env(safe-area-inset-top) + min(14px,
 .qtip-btns { display: flex; gap: 8px; justify-content: flex-end; }
 .qtip-btns button { border: none; border-radius: 999px; padding: 6px 16px; font-size: 13px; font-weight: 600; background: rgba(255,255,255,.12); color: #fff; }
 .qtip-btns .qtip-yes { background: var(--accent); }
-/* 軽量化中の竜（左右に行ったり来たり。向きも変える） */
-.lite-dragon { position: relative; height: 44px; overflow: hidden; margin-bottom: 4px; }
-.lite-dragon span { position: absolute; left: 0; top: 4px; font-size: 32px; line-height: 1; animation: dragon-walk 3.2s ease-in-out infinite; }
-@keyframes dragon-walk {
-  0% { left: 0; transform: scaleX(-1) translateY(0); }
-  12% { transform: scaleX(-1) translateY(-6px); }
-  25% { transform: scaleX(-1) translateY(0); }
-  37% { transform: scaleX(-1) translateY(-6px); }
-  49% { left: calc(100% - 36px); transform: scaleX(-1) translateY(0); }
-  50% { left: calc(100% - 36px); transform: scaleX(1) translateY(0); }
-  62% { transform: scaleX(1) translateY(-6px); }
-  75% { transform: scaleX(1) translateY(0); }
-  87% { transform: scaleX(1) translateY(-6px); }
-  100% { left: 0; transform: scaleX(1) translateY(0); }
+/* 軽量化中の竜: 右の果物の山まで歩いて1個持ち、左のかごまで運んで入れる。1往復 3.2s、運ぶ果物は1往復ごとに変わる */
+.lite-dragon { position: relative; height: 64px; overflow: hidden; margin-bottom: 4px; }
+.ld-basket { position: absolute; left: 0; bottom: 2px; font-size: 30px; line-height: 1; z-index: 2; }
+.ld-pile { position: absolute; right: 8px; bottom: 4px; font-size: 18px; line-height: 1; letter-spacing: -4px; }
+.ld-walker { position: absolute; bottom: 2px; left: 34px; width: 36px; height: 60px; animation: ld-walk 3.2s ease-in-out infinite; }
+.ld-dragon { position: absolute; left: 0; bottom: 0; font-size: 32px; line-height: 1; animation: ld-face 3.2s linear infinite, ld-hop 0.8s ease-in-out infinite; }
+.ld-carry { position: absolute; left: 6px; top: 0; width: 24px; height: 24px; overflow: hidden; animation: ld-carry 3.2s linear infinite; }
+.ld-fruits { display: flex; flex-direction: column; animation: ld-next 54.4s steps(17) infinite; }
+.ld-fruits span { height: 24px; font-size: 20px; line-height: 24px; text-align: center; }
+/* 0〜45%: 右へ歩く（手ぶら） / 45〜55%: 山で果物を持つ / 55〜92%: 左へ運ぶ / 92〜100%: かごに入れる */
+@keyframes ld-walk {
+  0% { left: 34px; }
+  45%, 55% { left: calc(100% - 84px); }
+  92%, 100% { left: 34px; }
 }
-@media (prefers-reduced-motion: reduce) { .lite-dragon span { animation-duration: 8s; } }
+@keyframes ld-face {
+  0%, 49.9% { transform: scaleX(-1); }
+  50%, 100% { transform: scaleX(1); }
+}
+@keyframes ld-hop { 0%, 100% { translate: 0 0; } 50% { translate: 0 -4px; } }
+@keyframes ld-carry {
+  0%, 50% { opacity: 0; transform: translateY(0); }
+  54%, 92% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translate(-22px, 30px); }
+}
+@keyframes ld-next { from { transform: translateY(0); } to { transform: translateY(-408px); } }
+@media (prefers-reduced-motion: reduce) { .ld-dragon { animation: ld-face 3.2s linear infinite; } }
 
 /* 軽量化の画面 */
 .lite-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.06); }

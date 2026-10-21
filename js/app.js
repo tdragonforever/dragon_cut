@@ -292,7 +292,13 @@ async function runLiteInner(only) {
   const ac = new AbortController();
   const pct = h('span', {}, '0%'), eta = h('span', { class: 'lbl' }, '残り時間を計算中…'), bar = h('div', { id: 'liteProg' }), now = h('p', { class: 'lbl' });
   const sheet = h('div', { class: 'sheet' }, h('div', { class: 'sheet-card' },
-    h('div', { class: 'lite-dragon' }, h('span', {}, '🐉')),
+    // 竜が右の果物の山から1個ずつ持ってきて、左のかごに入れる（CSSだけで動く）
+    h('div', { class: 'lite-dragon', 'aria-hidden': 'true' },
+      h('span', { class: 'ld-basket' }, '🧺'),
+      h('span', { class: 'ld-pile' }, '🍎🍊🍌'),
+      h('span', { class: 'ld-walker' },
+        h('span', { class: 'ld-carry' }, h('span', { class: 'ld-fruits' }, ...[...'🍎🍊🍌🍇🍓🍉🍑🍒🍍🥝🍋🍐🍏🫐🥭🍈🥥'].map((f) => h('span', {}, f)))),
+        h('span', { class: 'ld-dragon' }, '🐉'))),
     h('div', { class: 'sheet-title' }, '⚡ 軽量化しています…'),
     h('div', { class: 'run-head' }, pct, eta),
     h('div', { class: 'progress' }, bar),
