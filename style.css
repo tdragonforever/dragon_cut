@@ -327,4 +327,29 @@ input[type=color] { width: 44px; height: 30px; border: none; background: none; p
 }
 html.standalone #editor { padding-top: calc(env(safe-area-inset-top) + min(14px, env(safe-area-inset-top) * 100)); }
 html.standalone .screen { padding-top: calc(env(safe-area-inset-top) + min(14px, env(safe-area-inset-top) * 100)); }
-.q-badge { pointer-events: none; }
+
+/* 軽量化の吹き出し（元の画質の表示の下） */
+.ebar { position: relative; }
+.qtip { position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%); width: min(300px, calc(100vw - 32px)); z-index: 30;
+  background: #2a3b5c; color: #eaf1ff; border-radius: 12px; padding: 10px 12px; font-size: 12.5px; line-height: 1.5; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
+.qtip::before { content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top: 0; border-bottom-color: #2a3b5c; }
+.qtip p { margin: 0 0 8px; }
+.qtip-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.qtip-btns button { border: none; border-radius: 999px; padding: 6px 16px; font-size: 13px; font-weight: 600; background: rgba(255,255,255,.12); color: #fff; }
+.qtip-btns .qtip-yes { background: var(--accent); }
+/* 軽量化中の竜（左右に行ったり来たり。向きも変える） */
+.lite-dragon { position: relative; height: 44px; overflow: hidden; margin-bottom: 4px; }
+.lite-dragon span { position: absolute; left: 0; top: 4px; font-size: 32px; line-height: 1; animation: dragon-walk 3.2s ease-in-out infinite; }
+@keyframes dragon-walk {
+  0% { left: 0; transform: scaleX(-1) translateY(0); }
+  12% { transform: scaleX(-1) translateY(-6px); }
+  25% { transform: scaleX(-1) translateY(0); }
+  37% { transform: scaleX(-1) translateY(-6px); }
+  49% { left: calc(100% - 36px); transform: scaleX(-1) translateY(0); }
+  50% { left: calc(100% - 36px); transform: scaleX(1) translateY(0); }
+  62% { transform: scaleX(1) translateY(-6px); }
+  75% { transform: scaleX(1) translateY(0); }
+  87% { transform: scaleX(1) translateY(-6px); }
+  100% { left: 0; transform: scaleX(1) translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) { .lite-dragon span { animation-duration: 8s; } }

@@ -9,7 +9,7 @@ import {
 import { renderFrame, drawText, textBounds, overlayRect } from './render.js';
 import { FONTS, fontByKey, addFontCss, ensureFont } from './fonts.js';
 import { decodeAudioFile, computePeaks, resample, SR } from './audio.js';
-import { openVideo, decodeSourceAudio, exportVideo, detectEncoders, bitrateFor } from './media.js';
+import { openVideo, decodeSourceAudio, exportVideo, detectEncoders, bitrateFor, makeProxy } from './media.js';
 import { CanvasSink } from './vendor/mediabunny.min.mjs';
 import { openCutout } from './cutout.js';
 import { drawMain, TRANSITIONS, MOTIONS } from './compose.js';
@@ -101,6 +101,7 @@ function undoRedo(d) {
   afterTimingChange();
   afxChanged(false);
   updateUndo();
+  for (const s of S.srcs.values()) swapSrc(s);
 }
 function updateUndo() {
   $('undo').disabled = S.hIndex <= 0;
@@ -144,24 +145,162 @@ async function openSource(file, fixedId) {
 }
 
 // ---------------------------------------------------------------------------
-// 元の画質の表示（再生位置の動画）
+// 元の画質の表示と軽量化
+// フルHD 以上の動画は、吹き出しで「軽量化しますか？」と聞く。はい → 全部の動画の軽い版（短い辺 720px）を
+// まとめて作ってから（その間は待ってもらう）、編集中の再生だけ軽い版に切り替える。書き出しは元の動画から
 
 function qualityLabel(info) {
   const m = Math.min(info.width, info.height);
   return m >= 2160 ? '4K' : m >= 1440 ? '2.5K' : m >= 1080 ? 'フルHD' : m >= 720 ? 'HD' : 'SD';
 }
+const isBig = (s) => Math.min(s.info.width, s.info.height) >= 1080;
+const curUrl = (s) => (S.proj && S.proj.lite && s.purl ? s.purl : s.url);
+const needsLite = () => !!window.VideoEncoder && [...S.srcs.values()].some((s) => isBig(s) && !s.purl);
+let tipOpen = false, liting = false; // 軽量化済みのときに、表示をタップして出す吹き出し
+
 function updateQBadge() {
   const b = $('qBadge');
   const s = S.proj && (S.cur || (S.proj.clips[0] && S.srcs.get(S.proj.clips[0].srcId)));
-  if (!s) { b.hidden = true; return; }
+  if (!s) { b.hidden = true; renderQTip(); return; }
   b.hidden = false;
-  b.textContent = `元 ${qualityLabel(s.info)}・${Math.round(s.info.fps)}fps`;
-  b.classList.toggle('big', Math.min(s.info.width, s.info.height) > 1080);
+  b.textContent = `元 ${qualityLabel(s.info)}・${Math.round(s.info.fps)}fps` + (S.proj.lite && s.purl ? '・⚡軽量' : '');
+  b.classList.toggle('big', isBig(s));
+  renderQTip();
+}
+
+function renderQTip() {
+  const tip = $('qTip');
+  tip.innerHTML = '';
+  const ask = S.proj && !S.proj.liteNo && !liting && needsLite() && !$('editor').hidden;
+  const info = !ask && tipOpen && S.proj && S.proj.lite;
+  tip.hidden = !(ask || info);
+  if (ask) {
+    tip.append(
+      h('p', {}, 'この動画は画質が良いので処理が重くなるかも。軽量化しますか？'),
+      h('div', { class: 'qtip-btns' },
+        h('button', { class: 'qtip-yes', onclick: () => runLite() }, 'はい'),
+        h('button', { onclick: () => { S.proj.liteNo = true; scheduleSave(); renderQTip(); } }, 'いいえ')));
+  } else if (info) {
+    tip.append(
+      h('p', {}, '⚡軽量モード: 編集中は軽い画質で再生しています。書き出しは元の画質のままです。'),
+      h('div', { class: 'qtip-btns' },
+        h('button', { onclick: () => { tipOpen = false; setLite(false); } }, '元の画質で再生'),
+        h('button', { onclick: () => { tipOpen = false; renderQTip(); } }, '閉じる')));
+  }
+}
+$('qBadge').addEventListener('click', () => {
+  if (!S.proj) return;
+  if (S.proj.lite) { tipOpen = !tipOpen; renderQTip(); return; }
+  if (S.proj.liteNo && needsLite()) { S.proj.liteNo = false; renderQTip(); return; } // いいえを選んだあとでも、表示をタップすればもう一度聞く
+  toast('この画質なら、そのままで軽く再生できます', 2500);
+});
+
+// 再生する <video> の中身を差し替える（再生位置は保つ）。終わるまで待てる
+function swapSrc(s) {
+  const url = curUrl(s);
+  if ((s.el.dataset.u || s.url) === url) return Promise.resolve();
+  const t = s.el.currentTime;
+  s.el.dataset.u = url;
+  auxSrc = null;
+  return new Promise((res) => {
+    s.el.addEventListener('loadeddata', async () => {
+      // スマホは一度動かさないと最初のフレームが出ないことがあるので、音を消して一瞬だけ再生する
+      const m = s.el.muted;
+      s.el.muted = true;
+      try { await s.el.play(); s.el.pause(); } catch {}
+      s.el.muted = m;
+      s.el.currentTime = t;
+      requestDraw();
+      res();
+    }, { once: true });
+    s.el.addEventListener('error', () => res(), { once: true });
+    s.el.src = url;
+    s.el.load();
+  });
+}
+async function setLite(on) {
+  pause();
+  S.proj.lite = on;
+  scheduleSave();
+  await Promise.all([...S.srcs.values()].map(swapSrc));
+  updateQBadge();
+  if (!on) toast('元の画質で再生します（表示をタップすると、もう一度軽量化できます）', 3000);
+}
+
+// 保存してある軽い版を読み込む（開き直したとき）
+async function loadStoredProxies() {
+  if (!S.projId) return;
+  for (const s of S.srcs.values()) {
+    if (!isBig(s) || s.purl) continue;
+    const blob = await getFile(S.projId + '/proxy:' + s.id).catch(() => null);
+    if (blob) s.purl = URL.createObjectURL(blob);
+  }
+  if (S.proj.lite) await Promise.all([...S.srcs.values()].map(swapSrc));
+  updateQBadge();
+}
+
+// 「はい」: 全部の動画の軽い版を作る（進み具合と残り時間を見せる）
+async function runLite() {
+  pause();
+  liting = true;
+  renderQTip();
+  try { await runLiteInner(); } finally { liting = false; updateQBadge(); }
+}
+async function runLiteInner() {
+  const list = [...S.srcs.values()].filter((s) => isBig(s) && !s.purl);
+  if (!list.length) { S.proj.lite = true; scheduleSave(); await setLite(true); return; }
+  const total = list.reduce((a, s) => a + s.duration, 0) || 1;
+  const ac = new AbortController();
+  const pct = h('span', {}, '0%'), eta = h('span', { class: 'lbl' }, '残り時間を計算中…'), bar = h('div', { id: 'liteProg' }), now = h('p', { class: 'lbl' });
+  const sheet = h('div', { class: 'sheet' }, h('div', { class: 'sheet-card' },
+    h('div', { class: 'lite-dragon' }, h('span', {}, '🐉')),
+    h('div', { class: 'sheet-title' }, '⚡ 軽量化しています…'),
+    h('div', { class: 'run-head' }, pct, eta),
+    h('div', { class: 'progress' }, bar),
+    now,
+    h('p', { class: 'lbl' }, '編集中に軽く再生するための動画を作っています。書き出しは元の画質のままです。一度作れば、次に開くときは作り直しません。'),
+    h('button', { class: 'wide', onclick: () => ac.abort() }, '中止')));
+  document.body.append(sheet);
+  const t0 = performance.now();
+  let doneDur = 0, ok = 0;
+  const show = (k, s, i) => {
+    const f = Math.min(1, (doneDur + k * s.duration) / total);
+    pct.textContent = `${Math.floor(f * 100)}%`;
+    bar.style.width = (f * 100).toFixed(1) + '%';
+    const el = (performance.now() - t0) / 1000;
+    if (f > 0.03 && el > 1.5) eta.textContent = `残り 約${fmtSec((el / f) * (1 - f))}`;
+    now.textContent = (list.length > 1 ? `${i + 1}/${list.length}本目: ` : '') + s.info.name;
+  };
+  try {
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i];
+      show(0, s, i);
+      let blob = S.projId ? await getFile(S.projId + '/proxy:' + s.id).catch(() => null) : null;
+      if (!blob) {
+        blob = await makeProxy(s.file, s.info, (k) => show(k, s, i), ac.signal);
+        if (blob && S.projId) putFile(S.projId + '/proxy:' + s.id, blob).catch(() => {});
+      }
+      if (ac.signal.aborted) break;
+      if (blob) { s.purl = URL.createObjectURL(blob); ok++; }
+      doneDur += s.duration;
+    }
+  } catch (e) {
+    if (!ac.signal.aborted) { console.warn('lite', e); toast('軽量化できませんでした: ' + (e.message || e), 4000); }
+  }
+  sheet.remove();
+  if (ac.signal.aborted) { toast('軽量化を中止しました', 2500); updateQBadge(); return; }
+  if (!ok) { toast('この端末では軽量化できませんでした', 3500); S.proj.liteNo = true; scheduleSave(); updateQBadge(); return; }
+  S.proj.lite = true;
+  scheduleSave();
+  await Promise.all([...S.srcs.values()].map(swapSrc));
+  updateQBadge();
+  toast('⚡軽量化しました。編集中は軽く再生します（書き出しは元の画質）', 3500);
 }
 
 function resetProject() {
   pause();
-  for (const s of S.srcs.values()) { s.el.pause(); s.el.remove(); URL.revokeObjectURL(s.url); }
+  for (const s of S.srcs.values()) { s.el.pause(); s.el.remove(); URL.revokeObjectURL(s.url); if (s.purl) URL.revokeObjectURL(s.purl); }
+  tipOpen = false;
   S.srcs.clear();
   S.cur = null;
   S.buffers.clear();
@@ -216,7 +355,7 @@ async function loadFiles(files) {
     afterTimingChange();
     seek(0);
     startAfxWorker();
-    for (const s of list) { loadThumbs(s); loadSourceWave(s) }
+    for (const s of list) { loadThumbs(s); loadSourceWave(s); }
   } catch (e) {
     console.error(e);
     alert('読み込みに失敗しました: ' + (e.message || e));
@@ -239,7 +378,7 @@ async function addVideos(files) {
     $('toast').hidden = true;
     commit();
     afterTimingChange();
-    for (const s of added) { loadThumbs(s); loadSourceWave(s) }
+    for (const s of added) { loadThumbs(s); loadSourceWave(s); }
     toast(`${added.length}本の動画を後ろに追加しました`);
   } catch (e) {
     console.error(e);
@@ -341,7 +480,7 @@ function auxFrame(x, st) {
   const s = S.srcs.get(x.clip.srcId);
   if (!s) return null;
   auxUsed = true;
-  if (auxSrc !== s) { auxSrc = s; auxEl.src = s.url; auxEl.currentTime = Math.max(0, st); }
+  if (auxSrc !== s) { auxSrc = s; auxEl.src = curUrl(s); auxEl.currentTime = Math.max(0, st); }
   const want = clamp(st, 0, s.duration - 0.03);
   auxEl.playbackRate = x.clip.speed;
   if (S.playing) {
@@ -2788,8 +2927,6 @@ async function openSaved(id) {
     }
     // メインの動画
     const srcIds = [...new Set(proj.clips.map((c) => c.srcId))];
-    // 以前の版（軽量プレビュー）が保存した軽い動画は使わないので消す
-    for (const sid of srcIds) deleteFile(id + '/proxy:' + sid).catch(() => {});
     for (let i = 0; i < srcIds.length; i++) {
       $('loadMsg').textContent = `動画を読み込み中…（${i + 1}/${srcIds.length}）`;
       await openSource(files.get('s:' + srcIds[i]), srcIds[i]);
@@ -2823,7 +2960,8 @@ async function openSaved(id) {
     afterTimingChange();
     seek(0);
     startAfxWorker();
-    for (const s of S.srcs.values()) { loadThumbs(s); loadSourceWave(s) }
+    for (const s of S.srcs.values()) { loadThumbs(s); loadSourceWave(s); }
+    loadStoredProxies();
     afxChanged(false);
     toast('保存した編集を開きました');
   } catch (e) {
