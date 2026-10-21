@@ -239,15 +239,56 @@ async function loadStoredProxies() {
   updateQBadge();
 }
 
+// 「軽量化」画面: 動画を選んで軽量化する。どれくらい軽くなるかの目安も出す
+const canLite = (s) => Math.min(s.info.width, s.info.height) > 720;
+function liteEstimate(s) {
+  const k = 720 / Math.min(s.info.width, s.info.height);
+  const px = 1 / (k * k);
+  const srcMbps = (s.file.size * 8) / Math.max(0.1, s.duration) / 1e6;
+  const data = srcMbps / 2.7; // 軽い版は映像 2.5Mbps＋音声
+  return { px, data, srcMbps };
+}
+function buildLite(body) {
+  const list = [...S.srcs.values()];
+  const pick = new Set(list.filter((s) => canLite(s) && !s.purl).map((s) => s.id));
+  const runBtn = h('button', { class: 'primary' });
+  const refreshBtn = () => { runBtn.textContent = pick.size ? `選んだ動画を軽量化する（${pick.size}本）` : '軽量化する動画を選んでください'; runBtn.disabled = !pick.size; };
+  const fmtK = (v) => (v >= 1.5 ? `約1/${Math.round(v)}` : 'ほぼ同じ');
+  const rows = list.map((s) => {
+    const e = liteEstimate(s);
+    const ok = canLite(s);
+    const cb = h('input', { type: 'checkbox' });
+    cb.checked = pick.has(s.id);
+    cb.disabled = !ok || !!s.purl;
+    cb.addEventListener('change', () => { cb.checked ? pick.add(s.id) : pick.delete(s.id); refreshBtn(); });
+    const k = 720 / Math.min(s.info.width, s.info.height);
+    const after = ok ? `${Math.round(s.info.width * k / 2) * 2}×${Math.round(s.info.height * k / 2) * 2}` : '';
+    return h('label', { class: 'lite-row' + (cb.disabled ? ' off' : '') }, cb,
+      h('div', { class: 'lite-info' },
+        h('div', { class: 'lite-name' }, s.info.name),
+        h('div', { class: 'lbl' }, `元 ${qualityLabel(s.info)}（${s.info.width}×${s.info.height}・${Math.round(s.info.fps)}fps・${e.srcMbps < 10 ? e.srcMbps.toFixed(1) : Math.round(e.srcMbps)}Mbps）`),
+        s.purl ? h('div', { class: 'lite-done' }, '⚡軽量化済み')
+          : ok ? h('div', { class: 'lite-gain' }, `→ ${after}：画素数 ${fmtK(e.px)}・データ量 ${fmtK(e.data)}`)
+          : h('div', { class: 'lbl' }, 'もともと軽いので軽量化は不要です')));
+  });
+  refreshBtn();
+  runBtn.addEventListener('click', () => { const only = list.filter((s) => pick.has(s.id)); if (only.length) runLite(only); });
+  body.append(sec('動画を選ぶ', ...rows, runBtn,
+    h('p', { class: 'lbl' }, '編集中に軽く再生するための動画を作ります（短い辺 720px）。フレームレートと音はそのまま。書き出しは元の画質のままです。一度作れば、次に開くときは作り直しません。')));
+  if (list.some((s) => s.purl)) {
+    body.append(sec('再生', toggle({ label: '⚡軽量化した動画で再生する', get: () => !!S.proj.lite, set: (v) => setLite(v) })));
+  }
+}
+
 // 「はい」: 全部の動画の軽い版を作る（進み具合と残り時間を見せる）
-async function runLite() {
+async function runLite(only) {
   pause();
   liting = true;
   renderQTip();
-  try { await runLiteInner(); } finally { liting = false; updateQBadge(); }
+  try { await runLiteInner(only); } finally { liting = false; updateQBadge(); if (S.panel === 'lite') openPanel('lite'); }
 }
-async function runLiteInner() {
-  const list = [...S.srcs.values()].filter((s) => isBig(s) && !s.purl);
+async function runLiteInner(only) {
+  const list = only || [...S.srcs.values()].filter((s) => isBig(s) && !s.purl);
   if (!list.length) { S.proj.lite = true; scheduleSave(); await setLite(true); return; }
   const total = list.reduce((a, s) => a + s.duration, 0) || 1;
   const ac = new AbortController();
@@ -1420,8 +1461,8 @@ function openPanel(name, title) {
   const body = $('panelBody');
   body.innerHTML = '';
   body.scrollTop = 0;
-  const builders = { ratio: buildRatio, speed: buildSpeed, volume: buildVolume, crop: buildCrop, tts: buildTts, effectPick: buildEffectPick, audio: buildAudioFx, color: buildColorPanel, trans: buildTransPanel, stamps: buildStamps };
-  const titles = { ratio: '比率（出来上がりの縦横比）', speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ（Demo）', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
+  const builders = { lite: buildLite, ratio: buildRatio, speed: buildSpeed, volume: buildVolume, crop: buildCrop, tts: buildTts, effectPick: buildEffectPick, audio: buildAudioFx, color: buildColorPanel, trans: buildTransPanel, stamps: buildStamps };
+  const titles = { lite: '軽量化（編集中だけ軽く再生）', ratio: '比率（出来上がりの縦横比）', speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ（Demo）', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
   $('panelTitle').textContent = title || titles[name] || '';
   $('panelDone').textContent = name === 'stamps' ? '閉じる' : '完了';
   if (builders[name]) builders[name](body);
