@@ -281,6 +281,8 @@ export async function exportVideo({ srcs, proj, buffers, overlayMedia = new Map(
     }
     report('video', 0, { frame: 0, frames });
     const t0 = performance.now();
+    // 元の動画のコマを取り出せなかった数（多いと黒い動画になるので、書き出し後に知らせる）
+    var needFrames = 0, missFrames = 0;
     let i = 0;
     for (let i0 = 0; i0 < frames; i0++) {
       if (signal?.aborted) break;
@@ -288,7 +290,8 @@ export async function exportVideo({ srcs, proj, buffers, overlayMedia = new Map(
       const mainSamples = new Map();
       for (const n of plan[i]) {
         const { value } = await clipReader(n.x.index).next();
-        if (value) mainSamples.set(n.x.index, value);
+        needFrames++;
+        if (value) mainSamples.set(n.x.index, value); else missFrames++;
       }
       const getFrame = (x) => {
         const sm = mainSamples.get(x.index);
@@ -337,5 +340,6 @@ export async function exportVideo({ srcs, proj, buffers, overlayMedia = new Map(
   return {
     file: new File([file.toBlob(type)], settings.name ? `${base}.${ext}` : `${base}_edit_${stamp}.${ext}`, { type }),
     width: W, height: H, fps, codec, audioCodec: mix ? (useAac ? 'aac' : 'pcm') : null,
+    needFrames, missFrames,
   };
 }

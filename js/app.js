@@ -156,7 +156,9 @@ function qualityLabel(info) {
 const isBig = (s) => Math.min(s.info.width, s.info.height) > 1080; // フルHD ちょうどは対象にしない
 const curUrl = (s) => (S.proj && S.proj.lite && s.purl ? s.purl : s.url);
 const needsLite = () => !!window.VideoEncoder && [...S.srcs.values()].some((s) => isBig(s) && !s.purl);
-let tipOpen = false, liting = false; // 軽量化済みのときに、表示をタップして出す吹き出し
+let tipOpen = false, liting = false;
+// 画質の吹き出し（軽量化の案内）を出すか。4K の書き出しの不具合が直るまで、いったん出さない
+const SHOW_LITE_TIP = false; // 軽量化済みのときに、表示をタップして出す吹き出し
 
 function updateQBadge() {
   const b = $('qBadge');
@@ -171,7 +173,7 @@ function updateQBadge() {
 function renderQTip() {
   const tip = $('qTip');
   tip.innerHTML = '';
-  const ask = S.proj && !S.proj.liteNo && !liting && needsLite() && !$('editor').hidden;
+  const ask = SHOW_LITE_TIP && S.proj && !S.proj.liteNo && !liting && needsLite() && !$('editor').hidden;
   const info = !ask && tipOpen && S.proj && S.proj.lite;
   tip.hidden = !(ask || info);
   if (ask) {
@@ -3363,6 +3365,31 @@ class ExportProgress {
   }
 }
 
+function releasePreview() {
+  pause();
+  for (const el of [...[...S.srcs.values()].map((s) => s.el), ...S.ovEls.values(), auxEl]) {
+    el.pause();
+    el.dataset.keep = el.currentTime;
+    el.removeAttribute('src');
+    el.load();
+  }
+  auxSrc = null;
+}
+function restorePreview() {
+  for (const s of S.srcs.values()) {
+    const t = +s.el.dataset.keep || 0;
+    s.el.dataset.u = curUrl(s);
+    s.el.src = curUrl(s);
+    s.el.addEventListener('loadedmetadata', () => { s.el.currentTime = t; requestDraw(); }, { once: true });
+    s.el.load();
+  }
+  for (const [id, el] of S.ovEls) {
+    const ov = S.proj.overlays.find((o) => o.id === id), m = ov && S.ovMedia.get(ov.mediaId);
+    if (m) { el.src = m.url; el.load(); }
+  }
+  setTimeout(() => seek(S.t), 300);
+}
+
 async function startExport() {
   $('expSettings').hidden = true;
   $('expRun').hidden = false;
@@ -3371,6 +3398,8 @@ async function startExport() {
   $('runMsg').textContent = '準備中…';
   exportAbort = new AbortController();
   let wake = null, prog = null;
+  // プレビュー用の <video> を一時的に空にして、端末の動画の処理（デコーダー）を書き出しに回す（4K で取り合いになるのを防ぐ）
+  releasePreview();
   try { wake = await navigator.wakeLock?.request('screen'); } catch {}
   try {
     await Promise.all(S.proj.texts.map((c) => ensureFont(c.font, c.text)));
@@ -3416,6 +3445,9 @@ async function startExport() {
     $('share').textContent = files.length > 1 ? `写真に保存 / 共有（${files.length}本まとめて）` : '写真に保存 / 共有';
     const codecName = { avc: 'H.264', hevc: 'HEVC' }[res.codec] || res.codec.toUpperCase();
     const total = files.reduce((a, f) => a + f.size, 0);
+    const miss = exportResults.reduce((a, r) => a + (r.missFrames || 0), 0), need = exportResults.reduce((a, r) => a + (r.needFrames || 0), 0);
+    $('doneWarn').hidden = !(need && miss / need > 0.02);
+    $('doneWarn').textContent = `⚠ 元の動画のコマを ${miss}/${need} 枚読み込めませんでした。その部分が黒くなっている可能性があります。もう一度書き出すか、解像度を 1080p にして試してください。`;
     $('doneMsg').textContent = `${res.width}×${res.height}・${+res.fps.toFixed(2)}fps・${codecName}・${files.length > 1 ? files.length + '本・合計' : ''}${(total / 1e6).toFixed(1)}MB` +
       (res.audioCodec === 'pcm' ? '（音声は無圧縮）' : '');
     const list = $('doneList');
@@ -3439,6 +3471,7 @@ async function startExport() {
     }
   } finally {
     try { await wake?.release(); } catch {}
+    restorePreview();
   }
 }
 
@@ -3455,7 +3488,7 @@ $('closeSheet').addEventListener('click', () => {
   $('resultVideo').removeAttribute('src');
 });
 $('share').addEventListener('click', async () => {
-  try { await navigator.share({ files: exportResults.map((r) => r.file) }); } catch (e) { if (e.name !== 'AbortError') toast('共有できませんでした。「ファイルとして保存」を使ってください'); }
+  try { await navigator.share({ files: exportResults.map((r) => r.file) }); } catch (e) { if (e.name !== 'AbortError') toast(`共有できませんでした（${e.name}: ${e.message}）。「ファイルとして保存」を使ってください`, 5000); }
 });
 
 // ---------------------------------------------------------------------------
