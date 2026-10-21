@@ -35,6 +35,7 @@ export async function openVideo(file) {
       fps,
       codec: vt.codec,
       hasAudio: !!at,
+      hdr: await vt.hasHighDynamicRange().catch(() => false),
     },
   };
 }
@@ -297,7 +298,7 @@ export async function exportVideo({ srcs, proj, buffers, overlayMedia = new Map(
         const sm = mainSamples.get(x.index);
         if (!sm) return null;
         const info = srcs.get(x.clip.srcId).media.info;
-        return { w: info.width, h: info.height, draw: (c, X, Y, Wd, Hd) => sm.draw(c, X, Y, Wd, Hd) };
+        return { w: info.width, h: info.height, hdr: info.hdr, draw: (c, X, Y, Wd, Hd) => sm.draw(c, X, Y, Wd, Hd) };
       };
       const cur = new Map();
       for (const ov of overlays) {

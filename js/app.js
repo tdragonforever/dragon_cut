@@ -165,7 +165,7 @@ function updateQBadge() {
   const s = S.proj && (S.cur || (S.proj.clips[0] && S.srcs.get(S.proj.clips[0].srcId)));
   if (!s) { b.hidden = true; renderQTip(); return; }
   b.hidden = false;
-  b.textContent = `元 ${qualityLabel(s.info)}・${Math.round(s.info.fps)}fps` + (S.proj.lite && s.purl ? '・⚡軽量' : '');
+  b.textContent = `元 ${qualityLabel(s.info)}・${Math.round(s.info.fps)}fps` + (s.info.hdr ? '・HDR' : '') + (S.proj.lite && s.purl ? '・⚡軽量' : '');
   b.classList.toggle('big', isBig(s));
   renderQTip();
 }
@@ -539,7 +539,7 @@ function auxFrame(x, st) {
     if (!auxEl.seeking && Math.abs(auxEl.currentTime - want) > 0.03) auxEl.currentTime = want;
   }
   if (auxEl.readyState < 2) return null;
-  return { w: s.info.width, h: s.info.height, draw: (c, X, Y, W, H) => c.drawImage(auxEl, X, Y, W, H) };
+  return { w: s.info.width, h: s.info.height, hdr: s.info.hdr, draw: (c, X, Y, W, H) => c.drawImage(auxEl, X, Y, W, H) };
 }
 
 // プレビュー: 再生中の素材の <video>、トランジション中のもう片方は auxEl から取る
@@ -547,7 +547,7 @@ function previewFrame(x, st) {
   const s = S.srcs.get(x.clip.srcId);
   if (s && S.cur === s && S.curClip && S.curClip.clip === x.clip) {
     if (s.el.readyState < 2) return null;
-    return { w: s.info.width, h: s.info.height, draw: (c, X, Y, W, H) => c.drawImage(s.el, X, Y, W, H) };
+    return { w: s.info.width, h: s.info.height, hdr: s.info.hdr, draw: (c, X, Y, W, H) => c.drawImage(s.el, X, Y, W, H) };
   }
   return auxFrame(x, st);
 }
@@ -3240,6 +3240,11 @@ async function openExport() {
     h('div', { class: 'sec-title' }, '形式'), chips({ options: [{ v: 'avc', label: 'H.264（互換性重視）' }, { v: 'hevc', label: 'HEVC（同じ画質で小さめ）' }], get: () => EXP.codec, set: (v) => (EXP.codec = v), onChange: est }),
     h('div', { class: 'sec-title' }, 'ビットレート'), chips({ options: [{ v: 'max', label: '最高（容量大）' }, { v: 'high', label: '高' }], get: () => EXP.quality, set: (v) => (EXP.quality = v), onChange: est }),
   );
+  if ([...S.srcs.values()].some((s) => s.info.hdr)) {
+    box.append(h('div', { class: 'sec-title' }, 'HDR の明るさ補正（テスト）'),
+      h('p', { class: 'lbl' }, 'HDR で撮った動画は、通常の明るさ（SDR）で書き出されます。元の動画より少し暗く・地味に見えることがあるので、HDR の動画の部分だけ明るくできます。プレビューにも反映されます。'),
+      chips({ options: [{ v: 0, label: 'オフ' }, { v: 1, label: '弱' }, { v: 2, label: '中' }, { v: 3, label: '強' }], get: () => p.hdrLift | 0, set: (v) => { p.hdrLift = v; requestDraw(); } }));
+  }
   const ng = groupsOf(p).length;
   if (ng > 1) {
     box.append(h('div', { class: 'sec-title' }, '書き出し方'),

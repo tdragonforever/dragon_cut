@@ -1,7 +1,7 @@
 // メイン動画の1フレームを組み立てる: クリップの切り替え・トランジション・ズームパン（ケン・バーンズ）・色調補正
 // プレビューと書き出しで共用する。描く座標は画面（frame）の座標。
 import { clipTimes, clipAt, srcTimeAt, fitRect } from './project.js';
-import { glProc, colorActive } from './gl.js';
+import { glProc, colorActive, defaultColor } from './gl.js';
 
 export const TRANSITIONS = [
   { key: 'none', label: 'なし' },
@@ -102,9 +102,19 @@ export function clipRect(F, fw, fh, clip) {
   return { x: F.width / 2 + t.x * F.width - w / 2, y: F.height / 2 + t.y * F.height - h / 2, w, h };
 }
 
-// f: { w, h, draw(ctx, x, y, w, h) } … 素材のフレーム
+// HDR の明るさ補正（テスト機能）。p.hdrLift: 0 オフ / 1 弱 / 2 中 / 3 強。HDR の素材にだけかける
+export const HDR_LIFTS = [null, { lift: 0.12, sat: 1.04 }, { lift: 0.25, sat: 1.08 }, { lift: 0.4, sat: 1.12 }];
+function clipColor(p, clip, f) {
+  const l = f.hdr && HDR_LIFTS[p.hdrLift | 0];
+  if (!l) return clip.color;
+  const base = clip.color || defaultColor();
+  return { ...base, lift: (base.lift || 0) + l.lift, sat: base.sat * l.sat };
+}
+
+// f: { w, h, hdr, draw(ctx, x, y, w, h) } … 素材のフレーム
 function drawClipFrame(c, p, x, f, t) {
   const F = p.frame, clip = x.clip;
+  const color = clipColor(p, clip, f);
   const r = clipRect(F, f.w, f.h, clip);
   if (p.bg && p.bg.type === 'blur' && (r.x > 0.5 || r.y > 0.5 || r.x + r.w < F.width - 0.5 || r.y + r.h < F.height - 0.5)) drawBlurBg(c, F, f);
   c.save();
@@ -114,11 +124,11 @@ function drawClipFrame(c, p, x, f, t) {
     c.scale(m.s, m.s);
     c.translate(-F.width / 2, -F.height / 2);
   }
-  if (colorActive(clip.color)) {
+  if (colorActive(color)) {
     // 実際に表示される大きさ（書き出しなら元の画素数）で加工する
     const tf = c.getTransform ? c.getTransform() : { a: 1, d: 1 };
     const k = Math.min(1, Math.hypot(tf.a, tf.b) * (r.w / f.w));
-    const out = glProc().process((g, w, h) => f.draw(g, 0, 0, w, h), f.w * k, f.h * k, clip.color, null);
+    const out = glProc().process((g, w, h) => f.draw(g, 0, 0, w, h), f.w * k, f.h * k, color, null);
     if (out) c.drawImage(out, r.x, r.y, r.w, r.h);
     else f.draw(c, r.x, r.y, r.w, r.h);
   } else f.draw(c, r.x, r.y, r.w, r.h);

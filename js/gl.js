@@ -10,7 +10,7 @@ const FS = `
 precision highp float;
 varying vec2 v;
 uniform sampler2D tex;
-uniform float bright, contrast, sat, temp, tint, vig, fade;
+uniform float bright, contrast, sat, temp, tint, vig, fade, lift;
 uniform int mode;
 uniform int key;
 uniform vec3 keyColor;
@@ -29,6 +29,8 @@ void main() {
     float s = (1.0 - smoothstep(sim, sim + smooth_ + spill, d)) * step(0.001, spill);
     c = mix(c, vec3(luma(c)), s);
   }
+  // lift: 黒と白はそのままで中間を明るくする（HDR を普通の明るさにしたとき暗く見える分の補正）
+  c = pow(max(c, vec3(0.0)), vec3(1.0 / (1.0 + lift)));
   c += bright;
   c = (c - 0.5) * contrast + 0.5;
   c = mix(vec3(luma(c)), c, sat);
@@ -64,7 +66,7 @@ export function applyColorPreset(c, key) {
   Object.assign(c, defaultColor(), p ? p.v : {}, { preset: key });
 }
 
-export const colorActive = (c) => !!c && (c.bright !== 0 || c.contrast !== 1 || c.sat !== 1 || c.temp !== 0 || c.tint !== 0 || c.vig !== 0 || c.fade !== 0 || c.mode !== 0);
+export const colorActive = (c) => !!c && ((c.lift || 0) !== 0 || c.bright !== 0 || c.contrast !== 1 || c.sat !== 1 || c.temp !== 0 || c.tint !== 0 || c.vig !== 0 || c.fade !== 0 || c.mode !== 0);
 export const chromaActive = (k) => !!k && k.on;
 
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
@@ -97,7 +99,7 @@ class GLProc {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     this.u = {};
-    for (const n of ['bright', 'contrast', 'sat', 'temp', 'tint', 'vig', 'fade', 'mode', 'key', 'keyColor', 'sim', 'smooth_', 'spill']) this.u[n] = gl.getUniformLocation(pr, n);
+    for (const n of ['lift', 'bright', 'contrast', 'sat', 'temp', 'tint', 'vig', 'fade', 'mode', 'key', 'keyColor', 'sim', 'smooth_', 'spill']) this.u[n] = gl.getUniformLocation(pr, n);
   }
 
   // draw(ctx2d, w, h): 素材を (0,0,w,h) に描く関数。加工した結果のキャンバスを返す
@@ -112,6 +114,7 @@ class GLProc {
     gl.viewport(0, 0, w, h);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.tmp);
     const c = color || defaultColor();
+    gl.uniform1f(u.lift, c.lift || 0);
     gl.uniform1f(u.bright, c.bright * 0.3);
     gl.uniform1f(u.contrast, c.contrast);
     gl.uniform1f(u.sat, c.sat);
