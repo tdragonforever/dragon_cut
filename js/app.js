@@ -9,13 +9,13 @@ import {
 import { renderFrame, drawText, textBounds, overlayRect } from './render.js';
 import { FONTS, fontByKey, addFontCss, ensureFont } from './fonts.js';
 import { decodeAudioFile, computePeaks, resample, SR } from './audio.js';
-import { openVideo, decodeSourceAudio, exportVideo, detectEncoders, bitrateFor, makeProxy } from './media.js';
+import { openVideo, decodeSourceAudio, exportVideo, detectEncoders, bitrateFor } from './media.js';
 import { CanvasSink } from './vendor/mediabunny.min.mjs';
 import { openCutout } from './cutout.js';
 import { drawMain, TRANSITIONS, MOTIONS } from './compose.js';
 import { COLOR_PRESETS, defaultColor, defaultChroma, applyColorPreset, colorActive, edgeColor } from './gl.js';
 import { resolveKf } from './render.js';
-import { putProject, getProject, listProjects, putFile, getFile, deleteProject, deleteAllProjects, storageInfo, requestPersist, putStamp, deleteStamp, listStamps } from './store.js';
+import { putProject, getProject, listProjects, putFile, getFile, deleteFile, deleteProject, deleteAllProjects, storageInfo, requestPersist, putStamp, deleteStamp, listStamps } from './store.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -144,98 +144,24 @@ async function openSource(file, fixedId) {
 }
 
 // ---------------------------------------------------------------------------
-// 元の画質の表示と、軽量プレビュー（プロキシ）
-// 4K などの大きい動画は、編集中だけ短い辺 720px の軽い動画で再生する（書き出しは元の動画から）
+// 元の画質の表示（再生位置の動画）
 
 function qualityLabel(info) {
   const m = Math.min(info.width, info.height);
   return m >= 2160 ? '4K' : m >= 1440 ? '2.5K' : m >= 1080 ? 'フルHD' : m >= 720 ? 'HD' : 'SD';
 }
-const isBig = (s) => Math.min(s.info.width, s.info.height) > 1080;
-const LITE_KEY = 'dracut.lite';
-S.lite = (() => { try { return localStorage.getItem(LITE_KEY) !== '0'; } catch { return true; } })();
-const curUrl = (s) => (S.lite && s.purl ? s.purl : s.url);
-
 function updateQBadge() {
   const b = $('qBadge');
   const s = S.proj && (S.cur || (S.proj.clips[0] && S.srcs.get(S.proj.clips[0].srcId)));
   if (!s) { b.hidden = true; return; }
   b.hidden = false;
-  let t = `元 ${qualityLabel(s.info)}・${Math.round(s.info.fps)}fps`;
-  if (isBig(s)) {
-    if (!S.lite) t += '・高画質';
-    else if (s.purl) t += '・⚡軽量';
-    else if (s.proxyPct != null) t += `・軽量化中 ${Math.floor(s.proxyPct * 100)}%`;
-  }
-  b.textContent = t;
-  b.classList.toggle('big', isBig(s));
+  b.textContent = `元 ${qualityLabel(s.info)}・${Math.round(s.info.fps)}fps`;
+  b.classList.toggle('big', Math.min(s.info.width, s.info.height) > 1080);
 }
-
-// 再生する <video> の中身を差し替える（再生位置は保つ）
-function swapSrc(s) {
-  const url = curUrl(s);
-  if (s.el.dataset.u === url || (!s.el.dataset.u && url === s.url)) return;
-  if (S.playing) { s.swapPending = true; return; }
-  s.swapPending = false;
-  const t = s.el.currentTime;
-  s.el.dataset.u = url;
-  s.el.src = url;
-  s.el.addEventListener('loadedmetadata', () => { s.el.currentTime = t; requestDraw(); }, { once: true });
-  s.el.load();
-  auxSrc = null;
-}
-
-const proxyQueue = [];
-let proxyBusy = false;
-function queueProxy(s) {
-  if (!isBig(s) || s.purl || s.proxyPct != null || !window.VideoEncoder) return;
-  s.proxyPct = 0;
-  proxyQueue.push(s);
-  updateQBadge();
-  runProxyQueue();
-}
-async function runProxyQueue() {
-  if (proxyBusy) return;
-  proxyBusy = true;
-  try {
-    while (proxyQueue.length) {
-      const s = proxyQueue.shift();
-      if (!S.srcs.has(s.id)) continue;
-      const pid = S.projId;
-      let blob = null;
-      try {
-        // 保存してあれば使う（2回目以降は作り直さない）
-        blob = pid ? await getFile(pid + '/proxy:' + s.id).catch(() => null) : null;
-        if (!blob) {
-          blob = await makeProxy(s.file, s.info, (k) => { s.proxyPct = k; updateQBadge(); });
-          if (blob && pid && S.projId === pid) putFile(pid + '/proxy:' + s.id, blob).catch(() => {});
-        }
-      } catch (e) { console.warn('proxy', e); }
-      s.proxyPct = null;
-      if (blob && S.srcs.get(s.id) === s) {
-        s.purl = URL.createObjectURL(blob);
-        swapSrc(s);
-      }
-      updateQBadge();
-    }
-  } finally { proxyBusy = false; }
-}
-
-$('qBadge').addEventListener('click', () => {
-  if (!S.proj) return;
-  const big = [...S.srcs.values()].filter(isBig);
-  if (!big.length) { toast('この動画はそのままで軽く再生できます（軽量プレビューは 4K など大きい動画のときだけ使います）', 3500); return; }
-  S.lite = !S.lite;
-  try { localStorage.setItem(LITE_KEY, S.lite ? '1' : '0'); } catch {}
-  for (const s of big) { if (S.lite) queueProxy(s); swapSrc(s); }
-  updateQBadge();
-  toast(S.lite ? '⚡軽量プレビュー: 編集中は軽い画質で再生します。書き出しは元の画質のままです' : '高画質プレビュー: 元の画質で再生します（重くなることがあります）', 3500);
-});
 
 function resetProject() {
   pause();
-  for (const s of S.srcs.values()) { s.el.pause(); s.el.remove(); URL.revokeObjectURL(s.url); if (s.purl) URL.revokeObjectURL(s.purl); }
-  proxyQueue.length = 0;
+  for (const s of S.srcs.values()) { s.el.pause(); s.el.remove(); URL.revokeObjectURL(s.url); }
   S.srcs.clear();
   S.cur = null;
   S.buffers.clear();
@@ -290,7 +216,7 @@ async function loadFiles(files) {
     afterTimingChange();
     seek(0);
     startAfxWorker();
-    for (const s of list) { loadThumbs(s); loadSourceWave(s); queueProxy(s); }
+    for (const s of list) { loadThumbs(s); loadSourceWave(s) }
   } catch (e) {
     console.error(e);
     alert('読み込みに失敗しました: ' + (e.message || e));
@@ -313,7 +239,7 @@ async function addVideos(files) {
     $('toast').hidden = true;
     commit();
     afterTimingChange();
-    for (const s of added) { loadThumbs(s); loadSourceWave(s); queueProxy(s); }
+    for (const s of added) { loadThumbs(s); loadSourceWave(s) }
     toast(`${added.length}本の動画を後ろに追加しました`);
   } catch (e) {
     console.error(e);
@@ -415,7 +341,7 @@ function auxFrame(x, st) {
   const s = S.srcs.get(x.clip.srcId);
   if (!s) return null;
   auxUsed = true;
-  if (auxSrc !== s || auxEl.dataset.u !== curUrl(s)) { auxSrc = s; auxEl.dataset.u = curUrl(s); auxEl.src = curUrl(s); auxEl.currentTime = Math.max(0, st); }
+  if (auxSrc !== s) { auxSrc = s; auxEl.src = s.url; auxEl.currentTime = Math.max(0, st); }
   const want = clamp(st, 0, s.duration - 0.03);
   auxEl.playbackRate = x.clip.speed;
   if (S.playing) {
@@ -733,7 +659,6 @@ function pause() {
   S.audio.nodes = [];
   for (const x of S.audio.fxNodes) { try { x.node.disconnect(); } catch {} }
   S.audio.fxNodes = [];
-  for (const s of S.srcs.values()) if (s.swapPending) swapSrc(s);
   S.audio.vols = [];
   $('playIcon').innerHTML = '<path d="M8 5v14l11-7z"/>';
   if (S.curClip && S.cur && !S.cur.el.seeking) S.t = clamp(curTime(), S.curClip.start, Math.max(S.curClip.start, S.curClip.end - 0.001));
@@ -2863,6 +2788,8 @@ async function openSaved(id) {
     }
     // メインの動画
     const srcIds = [...new Set(proj.clips.map((c) => c.srcId))];
+    // 以前の版（軽量プレビュー）が保存した軽い動画は使わないので消す
+    for (const sid of srcIds) deleteFile(id + '/proxy:' + sid).catch(() => {});
     for (let i = 0; i < srcIds.length; i++) {
       $('loadMsg').textContent = `動画を読み込み中…（${i + 1}/${srcIds.length}）`;
       await openSource(files.get('s:' + srcIds[i]), srcIds[i]);
@@ -2896,7 +2823,7 @@ async function openSaved(id) {
     afterTimingChange();
     seek(0);
     startAfxWorker();
-    for (const s of S.srcs.values()) { loadThumbs(s); loadSourceWave(s); queueProxy(s); }
+    for (const s of S.srcs.values()) { loadThumbs(s); loadSourceWave(s) }
     afxChanged(false);
     toast('保存した編集を開きました');
   } catch (e) {

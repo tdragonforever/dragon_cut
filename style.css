@@ -327,3 +327,4 @@ input[type=color] { width: 44px; height: 30px; border: none; background: none; p
 }
 html.standalone #editor { padding-top: calc(env(safe-area-inset-top) + min(14px, env(safe-area-inset-top) * 100)); }
 html.standalone .screen { padding-top: calc(env(safe-area-inset-top) + min(14px, env(safe-area-inset-top) * 100)); }
+.q-badge { pointer-events: none; }

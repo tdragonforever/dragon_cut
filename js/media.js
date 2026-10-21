@@ -39,27 +39,6 @@ export async function openVideo(file) {
   };
 }
 
-// 編集中のプレビュー用に、短い辺 720px の軽い動画（プロキシ）を作る。書き出しには使わない（元の動画を使う）
-// 時刻はそのまま保つので、元の動画と同じ位置を再生できる。作れないときは null
-export async function makeProxy(file, info, onProgress) {
-  const k = 720 / Math.min(info.width, info.height);
-  const even = (v) => Math.max(2, Math.round(v / 2) * 2);
-  const w = even(info.width * k), h = even(info.height * k);
-  let codec = null;
-  for (const c of ['avc', 'hevc', 'vp9']) {
-    try { if (await canEncodeVideo(c, { width: w, height: h, bitrate: 2.5e6 })) { codec = c; break; } } catch {}
-  }
-  if (!codec) return null;
-  const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
-  const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() });
-  // キーフレームを細かく入れて、シークを速くする
-  const conv = await Conversion.init({ input, output, video: { width: w, height: h, fit: 'fill', codec, bitrate: 2.5e6, keyFrameInterval: 0.5, forceTranscode: true } });
-  if (!conv.isValid) return null;
-  conv.onProgress = onProgress;
-  await conv.execute();
-  return new Blob([output.target.buffer], { type: 'video/mp4' });
-}
-
 // 元動画の音声を [start, end)（秒）の範囲でデコードする
 export async function decodeSourceAudio(media, start, end, onProgress) {
   const at = media.audioTrack;

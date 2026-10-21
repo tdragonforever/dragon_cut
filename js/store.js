@@ -35,6 +35,7 @@ export const getProject = (id) => tx('projects', 'readonly', (s) => req(s.get(id
 export const listProjects = () => tx('projects', 'readonly', (s) => req(s.getAll())).then((l) => l.sort((a, b) => b.updated - a.updated));
 export const putFile = (key, blob) => tx('files', 'readwrite', (s) => s.put(blob, key));
 export const getFile = (key) => tx('files', 'readonly', (s) => req(s.get(key)));
+export const deleteFile = (key) => tx('files', 'readwrite', (s) => s.delete(key));
 export async function deleteProject(id) {
   await tx('projects', 'readwrite', (s) => s.delete(id));
   await tx('files', 'readwrite', (s) => s.delete(IDBKeyRange.bound(id + '/', id + '/￿')));
