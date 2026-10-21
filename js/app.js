@@ -1465,7 +1465,9 @@ function openPanel(name, title) {
   const titles = { lite: '軽量化（編集中だけ軽く再生）', ratio: '比率（出来上がりの縦横比）', speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ（Demo）', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
   $('panelTitle').textContent = title || titles[name] || '';
   $('panelDone').textContent = name === 'stamps' ? '閉じる' : '完了';
-  if (builders[name]) builders[name](body);
+  if (builders[name]) {
+    try { builders[name](body); } catch (e) { console.error(e); body.append(h('p', { class: 'lbl' }, '表示できませんでした: ' + (e.message || e))); }
+  }
   if (wasCrop !== cropMode()) layoutPreview();
   else if (name === 'audio') requestAnimationFrame(layoutPreview);
   requestDraw();
