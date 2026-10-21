@@ -3426,6 +3426,8 @@ renderSavedList();
   }
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+// ホーム画面のアイコンから開いたか（古い iOS は display-mode が効かないので、こちらでも判定する）
+if (navigator.standalone) document.documentElement.classList.add('standalone');
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 // テスト用

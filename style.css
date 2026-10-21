@@ -318,3 +318,11 @@ input[type=color] { width: 44px; height: 30px; border: none; background: none; p
 #resInfo { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .q-badge { border: none; background: rgba(255,255,255,.08); color: var(--text); font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .q-badge.big { background: rgba(79,156,255,.18); color: #9cc4ff; }
+
+/* ホーム画面のアイコンから開いたとき: iOS が画面上端にぼかしを重ねるので、その下まで少し下げる */
+@media (display-mode: standalone) {
+  #editor { padding-top: calc(env(safe-area-inset-top) + 14px); }
+  .screen { padding-top: calc(env(safe-area-inset-top) + 14px); }
+}
+html.standalone #editor { padding-top: calc(env(safe-area-inset-top) + 14px); }
+html.standalone .screen { padding-top: calc(env(safe-area-inset-top) + 14px); }
