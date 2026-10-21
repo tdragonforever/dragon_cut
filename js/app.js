@@ -249,6 +249,7 @@ function liteEstimate(s) {
   return { px, data, srcMbps };
 }
 function buildLite(body) {
+  body.append(h('p', { class: 'demo-note' }, '試作中の機能です。書き出しの画質に影響がないか確認中です'));
   const list = [...S.srcs.values()];
   const pick = new Set(list.filter((s) => canLite(s) && !s.purl).map((s) => s.id));
   const runBtn = h('button', { class: 'primary' });
@@ -1468,7 +1469,7 @@ function openPanel(name, title) {
   body.innerHTML = '';
   body.scrollTop = 0;
   const builders = { lite: buildLite, ratio: buildRatio, speed: buildSpeed, volume: buildVolume, crop: buildCrop, tts: buildTts, effectPick: buildEffectPick, audio: buildAudioFx, color: buildColorPanel, trans: buildTransPanel, stamps: buildStamps };
-  const titles = { lite: '軽量化（編集中だけ軽く再生）', ratio: '比率（出来上がりの縦横比）', speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ（Demo）', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
+  const titles = { lite: '軽量化（Demo）', ratio: '比率（出来上がりの縦横比）', speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ（Demo）', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
   $('panelTitle').textContent = title || titles[name] || '';
   $('panelDone').textContent = name === 'stamps' ? '閉じる' : '完了';
   if (builders[name]) {
