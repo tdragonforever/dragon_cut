@@ -146,14 +146,14 @@ async function openSource(file, fixedId) {
 
 // ---------------------------------------------------------------------------
 // 元の画質の表示と軽量化
-// フルHD 以上の動画は、吹き出しで「軽量化しますか？」と聞く。はい → 全部の動画の軽い版（短い辺 720px）を
+// フルHD より大きい動画は、吹き出しで「軽量化しますか？」と聞く。はい → 全部の動画の軽い版（短い辺 720px）を
 // まとめて作ってから（その間は待ってもらう）、編集中の再生だけ軽い版に切り替える。書き出しは元の動画から
 
 function qualityLabel(info) {
   const m = Math.min(info.width, info.height);
   return m >= 2160 ? '4K' : m >= 1440 ? '2.5K' : m >= 1080 ? 'フルHD' : m >= 720 ? 'HD' : 'SD';
 }
-const isBig = (s) => Math.min(s.info.width, s.info.height) >= 1080;
+const isBig = (s) => Math.min(s.info.width, s.info.height) > 1080; // フルHD ちょうどは対象にしない
 const curUrl = (s) => (S.proj && S.proj.lite && s.purl ? s.purl : s.url);
 const needsLite = () => !!window.VideoEncoder && [...S.srcs.values()].some((s) => isBig(s) && !s.purl);
 let tipOpen = false, liting = false; // 軽量化済みのときに、表示をタップして出す吹き出し
