@@ -362,3 +362,6 @@ html.standalone .screen { padding-top: calc(env(safe-area-inset-top) + min(14px,
 .lite-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lite-gain { font-size: 12px; color: #9cc4ff; margin-top: 2px; }
 .lite-done { font-size: 12px; color: #7ee0a1; margin-top: 2px; }
+
+.qtip .qtip-msg { margin: 0; padding-right: 22px; }
+.qtip-x { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border: none; border-radius: 50%; background: rgba(255,255,255,.12); color: #fff; font-size: 13px; line-height: 26px; padding: 0; }

@@ -146,7 +146,7 @@ async function openSource(file, fixedId) {
 
 // ---------------------------------------------------------------------------
 // 元の画質の表示と軽量化
-// フルHD より大きい動画は、吹き出しで「軽量化しますか？」と聞く。はい → 全部の動画の軽い版（短い辺 720px）を
+// フルHD より大きい動画は、吹き出しで下の「軽量化」ボタンを案内する。軽量化すると、選んだ動画の軽い版（短い辺 720px）を
 // まとめて作ってから（その間は待ってもらう）、編集中の再生だけ軽い版に切り替える。書き出しは元の動画から
 
 function qualityLabel(info) {
@@ -176,10 +176,8 @@ function renderQTip() {
   tip.hidden = !(ask || info);
   if (ask) {
     tip.append(
-      h('p', {}, 'この動画は画質が良いので処理が重くなるかも。軽量化しますか？'),
-      h('div', { class: 'qtip-btns' },
-        h('button', { class: 'qtip-yes', onclick: () => runLite() }, 'はい'),
-        h('button', { onclick: () => { S.proj.liteNo = true; scheduleSave(); renderQTip(); } }, 'いいえ')));
+      h('button', { class: 'qtip-x', 'aria-label': '閉じる', onclick: () => { S.proj.liteNo = true; scheduleSave(); renderQTip(); } }, '✕'),
+      h('p', { class: 'qtip-msg' }, 'この動画は画質が良いので処理が重くなるかも。軽量化したい場合は、下の「⚡軽量化」ボタンから選んでね。'));
   } else if (info) {
     tip.append(
       h('p', {}, '⚡軽量モード: 編集中は軽い画質で再生しています。書き出しは元の画質のままです。'),
@@ -280,7 +278,7 @@ function buildLite(body) {
   }
 }
 
-// 「はい」: 全部の動画の軽い版を作る（進み具合と残り時間を見せる）
+// 軽量化の実行: 動画の軽い版を作る（進み具合と残り時間を見せる）
 async function runLite(only) {
   pause();
   liting = true;
