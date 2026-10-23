@@ -175,6 +175,50 @@ export async function buildMainAudio(proj, srcs, onProgress) {
 }
 
 // srcs: Map(srcId -> { media（openVideo の結果） })
+// WebCodecs でデコードできない動画（古い機器や一部のアプリで作った HEVC など）用:
+// <video> で1コマずつ再生位置を合わせて取り出す。プレビューと同じ仕組みなので確実だが、そのぶん時間がかかる
+// times: 取り出す時刻（秒、動画の先頭が 0）。VideoSampleSink と同じく next() / return() で使う
+function elementReader(file, times) {
+  const url = URL.createObjectURL(file);
+  const el = document.createElement('video');
+  el.muted = true;
+  el.playsInline = true;
+  el.setAttribute('playsinline', '');
+  el.preload = 'auto';
+  el.style.cssText = 'position:fixed;left:-10px;top:-10px;width:2px;height:2px;opacity:0;pointer-events:none';
+  el.src = url;
+  document.body.append(el);
+  const once = (ev) => new Promise((r) => el.addEventListener(ev, r, { once: true }));
+  let i = 0, ready = null;
+  const init = async () => {
+    if (el.readyState < 1) await Promise.race([once('loadedmetadata'), once('error')]);
+    try { await el.play(); el.pause(); } catch {}
+  };
+  const frame = { draw: (c, X, Y, W, H) => c.drawImage(el, X, Y, W, H), close() {} };
+  return {
+    async next() {
+      if (!ready) ready = init();
+      await ready;
+      if (i >= times.length) return { done: true, value: undefined };
+      const t = Math.min(Math.max(0, times[i++]), Math.max(0, (el.duration || 0) - 0.01));
+      if (Math.abs(el.currentTime - t) > 1e-4 || el.readyState < 2) {
+        const p = once('seeked');
+        el.currentTime = t;
+        await p;
+      }
+      return { done: false, value: el.readyState >= 2 ? frame : null };
+    },
+    async return() {
+      el.pause();
+      el.removeAttribute('src');
+      el.load();
+      el.remove();
+      URL.revokeObjectURL(url);
+      return { done: true, value: undefined };
+    },
+  };
+}
+
 export async function exportVideo({ srcs, proj, buffers, overlayMedia = new Map(), settings, onProgress, signal }) {
   const report = (phase, k, extra) => onProgress && onProgress(phase, k, extra);
   const { w: W, h: H } = outputSize(proj, settings.limit);
@@ -254,10 +298,12 @@ export async function exportVideo({ srcs, proj, buffers, overlayMedia = new Map(
     const clipReader = (idx) => {
       let r = clipReaders.get(idx);
       if (!r) {
-        const s = srcs.get(ts[idx].clip.srcId).media;
+        const src = srcs.get(ts[idx].clip.srcId), s = src.media;
         const off = s.firstTimestamp, last = off + s.info.duration - 0.5 / (s.info.fps || fps);
         const times = perClip[idx].map((u) => Math.min(last, Math.max(off, off + u.st + 1e-4)));
-        r = new VideoSampleSink(s.videoTrack).samplesAtTimestamps(times)[Symbol.asyncIterator]();
+        r = s.canDecodeVideo
+          ? new VideoSampleSink(s.videoTrack).samplesAtTimestamps(times)[Symbol.asyncIterator]()
+          : elementReader(src.file, times.map((x) => x - off));
         clipReaders.set(idx, r);
       }
       return r;
@@ -278,7 +324,9 @@ export async function exportVideo({ srcs, proj, buffers, overlayMedia = new Map(
         const t = k / fps;
         if (active(ov, t)) ts.push(Math.min(last, ft + ov.offset + (t - ov.start) + 1e-4));
       }
-      readers.set(ov.id, new VideoSampleSink(vt).samplesAtTimestamps(ts)[Symbol.asyncIterator]());
+      readers.set(ov.id, (await vt.canDecode().catch(() => false))
+        ? new VideoSampleSink(vt).samplesAtTimestamps(ts)[Symbol.asyncIterator]()
+        : elementReader(m.file, ts.map((x) => x - ft)));
     }
     report('video', 0, { frame: 0, frames });
     const t0 = performance.now();

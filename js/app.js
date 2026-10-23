@@ -114,7 +114,7 @@ function updateUndo() {
 // 素材（動画ファイル）を1つ読み込む。S.srcs に登録して返す
 async function openSource(file, fixedId) {
   const media = await openVideo(file);
-  if (!media.canDecodeVideo) toast('この動画の形式は書き出しに対応していない可能性があります', 4000);
+  if (!media.canDecodeVideo) toast('この動画は特殊な形式なので、書き出しに時間がかかります（そのまま使えます）', 4000);
   const id = fixedId || newId('s');
   S.fileReg.set('s:' + id, file);
   const url = URL.createObjectURL(file);
