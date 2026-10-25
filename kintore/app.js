@@ -357,7 +357,8 @@ function viewExercise(main, date, idx) {
     box.innerHTML = ex.sets.map((s, k) => `
     <div class="set" data-k="${k}">
       <div class="line"><span class="no">${k + 1}</span>
-        <input class="num" data-f="w" inputmode="decimal" value="${esc(s.w)}" placeholder="0"><span class="unit">kg ×</span>
+        <span class="stepper"><button class="step" data-step="1" aria-label="2.5kg 増やす">▲</button><button class="step" data-step="-1" aria-label="2.5kg 減らす">▼</button></span>
+        <input class="num w" data-f="w" inputmode="decimal" value="${esc(s.w)}" placeholder="0"><span class="unit">kg ×</span>
         <input class="num" data-f="r" inputmode="numeric" value="${esc(s.r)}" placeholder="0" style="width:3em"><span class="unit">回</span>
         <span class="rm"></span><button class="del" data-del="${k}" aria-label="セットを消す">✕</button></div>
       <input class="memo" data-f="memo" value="${esc(s.memo || '')}" placeholder="メモ（補助ありなど）">
@@ -381,7 +382,52 @@ function viewExercise(main, date, idx) {
     if (f !== 'memo') updRM(k);
     scheduleAutoSync(date);
   });
+  // おもりを 2.5kg 刻みで動かす（▲▼ボタン、または数字を上下にスライド）。数字はタップすれば自由に書ける
+  const STEP = 2.5;
+  const stepW = (k, dir) => {
+    const s = ex.sets[k];
+    const input = box.querySelector(`.set[data-k="${k}"] input.w`);
+    let v;
+    if (s.w === '' || !Number.isFinite(parseFloat(s.w))) {
+      // 空なら前のセットの重さ（なければ 20kg）から始める
+      const prev = ex.sets.slice(0, k).reverse().find((x) => num(x.w));
+      v = prev ? num(prev.w) : 20;
+    } else {
+      const w = num(s.w);
+      // 2.5 の倍数にそろえながら動かす（61 → ▲ 62.5 / ▼ 60）
+      v = dir > 0 ? (Math.floor(w / STEP + 1e-6) + 1) * STEP : (Math.ceil(w / STEP - 1e-6) - 1) * STEP;
+    }
+    v = Math.max(0, Math.round(v * 100) / 100);
+    s.w = fmtW(v);
+    input.value = s.w;
+    save(); updRM(k); scheduleAutoSync(date);
+    try { navigator.vibrate && navigator.vibrate(8); } catch {}
+  };
+  let drag = null;
+  box.addEventListener('pointerdown', (ev) => {
+    if (!ev.target.matches('input.w')) return;
+    drag = { el: ev.target, k: Number(ev.target.closest('.set').dataset.k), y: ev.clientY, moved: false, id: ev.pointerId };
+  });
+  box.addEventListener('pointermove', (ev) => {
+    if (!drag || ev.pointerId !== drag.id) return;
+    const dy = drag.y - ev.clientY;
+    if (!drag.moved && Math.abs(dy) < 10) return;
+    if (!drag.moved) { drag.moved = true; drag.el.blur(); drag.el.classList.add('dragging'); try { drag.el.setPointerCapture(ev.pointerId); } catch {} }
+    ev.preventDefault();
+    // 22px 動かすごとに 1段階
+    const steps = Math.trunc(dy / 22);
+    if (steps) { for (let i = 0; i < Math.abs(steps); i++) stepW(drag.k, Math.sign(steps)); drag.y -= steps * 22; }
+  });
+  const endDrag = (ev) => {
+    if (!drag) return;
+    if (drag.moved) { ev.preventDefault(); drag.el.classList.remove('dragging'); drag.el.blur(); }
+    drag = null;
+  };
+  box.addEventListener('pointerup', endDrag);
+  box.addEventListener('pointercancel', endDrag);
   box.addEventListener('click', (ev) => {
+    const st = ev.target.dataset.step;
+    if (st != null) { stepW(Number(ev.target.closest('.set').dataset.k), Number(st)); return; }
     const d = ev.target.dataset.del;
     if (d == null) return;
     ex.sets.splice(Number(d), 1);

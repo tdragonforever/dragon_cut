@@ -88,10 +88,14 @@ nav#tabs a.on { color: var(--red); font-weight: 700; }
 
 .set { background: #fff; border-radius: 12px; padding: 8px 10px; margin-bottom: 8px; }
 .set .line { display: flex; align-items: center; gap: 6px; }
-.set .no { width: 1.6em; font-size: 18px; }
+.set .no { width: 1.2em; font-size: 18px; }
 .set input.num { width: 4em; min-width: 0; font-size: 20px; font-weight: 700; text-align: right; border: 0; border-bottom: 1px solid #777; padding: 4px 2px; background: none; }
+.set input.num.w { touch-action: none; }
+.set input.num.w.dragging { color: var(--red); border-bottom-color: var(--red); }
+.set .stepper { display: flex; flex-direction: column; gap: 2px; flex: none; }
+.set .step { border: 0; background: var(--red-pale); color: var(--red); width: 30px; height: 22px; border-radius: 6px; font-size: 11px; padding: 0; }
 .set .unit { color: #555; font-size: 14px; white-space: nowrap; }
-.set .rm { margin-left: auto; color: var(--sub); font-size: 13px; text-align: right; min-width: 4.5em; }
+.set .rm { margin-left: auto; color: var(--sub); font-size: 12px; text-align: right; width: 3.8em; flex: none; }
 .set .rm.best { color: #b48a00; font-weight: 700; }
 .set .del { border: 0; background: #e6e6e6; border-radius: 50%; width: 28px; height: 28px; color: #666; flex: none; }
 .set input.memo { width: 100%; margin-top: 6px; border: 0; border-bottom: 1px solid #ccc; padding: 4px 2px; font-size: 14px; background: none; }
