@@ -2,6 +2,8 @@
 
 **アプリを開く → https://tdragonforever.github.io/dragon_cut/**
 
+筋トレメモ（別アプリ）→ https://tdragonforever.github.io/dragon_cut/kintore/
+
 スマホの Safari/Chrome で動く、無料の動画編集アプリ。Safari/Chrome で開いて「共有 → ホーム画面に追加」すると、アプリのように使えます。
 動画はすべてスマホの中で処理され、どこにもアップロードされません。
 
