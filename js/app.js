@@ -811,9 +811,15 @@ function curTime() {
   return x.start + (s.el.currentTime - x.clip.in) / x.clip.speed;
 }
 
-function tick() {
+// 再生中の描き直しは、動画のコマ数（速度を掛けたもの）に合わせて最大 1秒60回まで。
+// iPad Pro や iPhone Pro は画面が 1秒120回書き換わるので、毎回描くと同じコマを2回描いて重くなる
+let lastTick = 0;
+function tick(now = performance.now()) {
   if (!S.playing) return;
   const s = S.cur, x = S.curClip;
+  const fps = Math.min(60, (s.info.fps || 30) * (x.clip.speed || 1));
+  if (now - lastTick < 750 / fps) { requestAnimationFrame(tick); return; } // 少し余裕を持たせて、重いときにコマを落としすぎないように
+  lastTick = now;
   if (s.el.seeking) { draw(); requestAnimationFrame(tick); return; }
   let t = curTime();
   if (t >= x.end - 0.02 || s.el.currentTime >= x.clip.out - 0.02 || s.el.ended) {
