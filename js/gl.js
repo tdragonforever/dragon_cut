@@ -104,6 +104,11 @@ class GLProc {
 
   // draw(ctx2d, w, h): 素材を (0,0,w,h) に描く関数。加工した結果のキャンバスを返す
   process(draw, w, h, color, chroma) {
+    // 4K などで失敗しても（メモリ不足など）書き出しを止めない。null を返すと色調補正なしで描かれる
+    try { return this._process(draw, w, h, color, chroma); } catch (e) { console.warn('gl', e); return null; }
+  }
+  _process(draw, w, h, color, chroma) {
+    if (this.gl && this.gl.isContextLost && this.gl.isContextLost()) return null;
     if (this.failed) return null;
     w = Math.max(1, Math.round(w)); h = Math.max(1, Math.round(h));
     if (this.tmp.width !== w || this.tmp.height !== h) { this.tmp.width = w; this.tmp.height = h; }

@@ -11,6 +11,13 @@ import { mixProject, SR, resample, timeStretch } from './audio.js';
 
 const COMMON_FPS = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120];
 
+// HDR の判定。iPhone のドルビービジョン（HEVC 10bit）は色の情報が無いことがあるので、コーデックの種類でも判定する
+async function isHdr(vt) {
+  if (await vt.hasHighDynamicRange().catch(() => false)) return true;
+  const cs = await vt.getCodecParameterString().catch(() => '') || '';
+  return /^(hvc1|hev1)\.2\./i.test(cs) || /^dv/i.test(cs);
+}
+
 export async function openVideo(file) {
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
   const vt = await input.getPrimaryVideoTrack();
@@ -35,7 +42,7 @@ export async function openVideo(file) {
       fps,
       codec: vt.codec,
       hasAudio: !!at,
-      hdr: await vt.hasHighDynamicRange().catch(() => false),
+      hdr: await isHdr(vt),
     },
   };
 }
@@ -219,6 +226,57 @@ function elementReader(file, times) {
   };
 }
 
+// 小さいキャンバスに描いて、真っ黒かどうか調べる
+const probeCv = () => { const c = document.createElement('canvas'); c.width = c.height = 24; return c; };
+function isBlack(draw) {
+  const c = probeCv(), g = c.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = '#000'; g.fillRect(0, 0, 24, 24);
+  try { draw(g); } catch { return true; }
+  const d = g.getImageData(0, 0, 24, 24).data;
+  let mx = 0;
+  for (let i = 0; i < d.length; i += 4) mx = Math.max(mx, d[i], d[i + 1], d[i + 2]);
+  return mx < 8;
+}
+// 書き出しの前に、WebCodecs で取り出したコマがちゃんと描けるか確かめる。
+// 失敗する・真っ黒になるのに <video> では映る（iPhone の HDR・ドルビービジョンの 4K など）なら、<video> で取り出す方を使う
+async function sinkUsable(src, t) {
+  const m = src.media;
+  if (!m.canDecodeVideo) return false;
+  let sinkBlack = true;
+  try {
+    const sm = await new VideoSampleSink(m.videoTrack).getSample(m.firstTimestamp + t);
+    if (sm) { sinkBlack = isBlack((g) => sm.draw(g, 0, 0, 24, 24)); sm.close(); }
+  } catch (e) { console.warn('sink probe', e); }
+  if (!sinkBlack) return true;
+  // 元の動画がもともと真っ黒な場面かもしれないので、<video> 側でも見て比べる
+  const r = elementReader(src.file, [t]);
+  try {
+    const { value } = await r.next();
+    return !value || isBlack((g) => value.draw(g, 0, 0, 24, 24));
+  } catch { return true; } finally { await r.return(); }
+}
+// WebCodecs での取り出しが途中で失敗したら、残りを <video> での取り出しに切り替える
+function resilientReader(src, times, off) {
+  let it = new VideoSampleSink(src.media.videoTrack).samplesAtTimestamps(times)[Symbol.asyncIterator]();
+  let i = 0, fallback = null;
+  return {
+    async next() {
+      if (fallback) return fallback.next();
+      try {
+        const r = await it.next();
+        i++;
+        return r;
+      } catch (e) {
+        console.warn('decode failed, switching to <video>', e);
+        try { await it.return?.(); } catch {}
+        fallback = elementReader(src.file, times.slice(i).map((x) => x - off));
+        return fallback.next();
+      }
+    },
+    async return() { if (fallback) return fallback.return(); return it.return?.(); },
+  };
+}
+
 export async function exportVideo({ srcs, proj, buffers, overlayMedia = new Map(), settings, onProgress, signal }) {
   const report = (phase, k, extra) => onProgress && onProgress(phase, k, extra);
   const { w: W, h: H } = outputSize(proj, settings.limit);
@@ -294,6 +352,14 @@ export async function exportVideo({ srcs, proj, buffers, overlayMedia = new Map(
       for (const n of needs) perClip[n.x.index].push({ k, st: n.st });
     }
     const lastUse = perClip.map((l) => (l.length ? l[l.length - 1].k : -1));
+    // 素材ごとに、WebCodecs で取り出せるか先に確かめる
+    const useSink = new Map();
+    for (let idx = 0; idx < ts.length; idx++) {
+      const src = srcs.get(ts[idx].clip.srcId);
+      if (!src || useSink.has(src.id) || !perClip[idx].length) continue;
+      const mid = perClip[idx][Math.floor(perClip[idx].length / 2)].st;
+      useSink.set(src.id, await sinkUsable(src, mid));
+    }
     const clipReaders = new Map();
     const clipReader = (idx) => {
       let r = clipReaders.get(idx);
@@ -301,8 +367,8 @@ export async function exportVideo({ srcs, proj, buffers, overlayMedia = new Map(
         const src = srcs.get(ts[idx].clip.srcId), s = src.media;
         const off = s.firstTimestamp, last = off + s.info.duration - 0.5 / (s.info.fps || fps);
         const times = perClip[idx].map((u) => Math.min(last, Math.max(off, off + u.st + 1e-4)));
-        r = s.canDecodeVideo
-          ? new VideoSampleSink(s.videoTrack).samplesAtTimestamps(times)[Symbol.asyncIterator]()
+        r = useSink.get(src.id)
+          ? resilientReader(src, times, off)
           : elementReader(src.file, times.map((x) => x - off));
         clipReaders.set(idx, r);
       }
