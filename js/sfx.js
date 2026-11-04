@@ -1,6 +1,7 @@
-// 効果音（Demo）: よく使われる効果音を、その場で音を合成して作る（音のファイルは使わないので、著作権やライセンスの心配がない）。
+// 効果音（Demo）: CC0（自由に使える・再配布できる）の録音素材を sfx/ に置いて使う（一覧は sfx-list.js）。
+// 録音が見つからなかった書く音（ボールペン・マーカーなど）だけは、その場で合成して作る。
 // make(ctx) は OfflineAudioContext に音をつなぐ関数。dur 秒ぶんを書き出して AudioBuffer にする。
-// 書く音などのザラザラした音は乱数を使うので、追加するたびに少しずつ違う音になる。
+import { SFX_GENRES as GENRES, SFX_LIB } from './sfx-list.js';
 
 const SR = 48000;
 
@@ -84,10 +85,8 @@ function writing(ctx, out, { strokes, f, q, grain, gain, squeak = 0, tap = 0, lp
   }
 }
 
-// --- 効果音の一覧 ---------------------------------------------------------
-export const SFX_GENRES = ['キラキラ', 'ポップ・UI', '正解・不正解', 'インパクト', '動き', 'リアクション', '書く音', '生活音'];
-
-export const SFX = [
+// --- 合成の効果音（録音が見つからなかったものだけ使う） ---------------------
+const SYNTH = [
   // キラキラ
   { g: 'キラキラ', key: 'kiran', label: 'キラーン', dur: 1.6, make: (c, o) => { const e = echo(c, o, { time: 0.09, fb: 0.45 }); [2093, 2637, 3136, 4186].forEach((f, i) => tone(c, e, i * 0.05, { f0: f, d: 1.0, peak: 0.25 })); } },
   { g: 'キラキラ', key: 'shalala', label: 'シャララ～ン', dur: 2.0, make: (c, o) => { const e = echo(c, o, { time: 0.11, fb: 0.4 }); for (let i = 0; i < 14; i++) tone(c, e, i * 0.045, { f0: 1046 * Math.pow(2, i / 7), d: 0.6, peak: 0.16, type: 'triangle' }); } },
@@ -143,9 +142,25 @@ export const SFX = [
   { g: '生活音', key: 'knock', label: 'ノック（コンコン）', dur: 0.8, make: (c, o) => [0, 0.18].forEach((t) => { tone(c, o, t, { f0: 300, f1: 180, slide: 0.05, d: 0.08, peak: 0.7 }); noise(c, o, t, { type: 'bandpass', f: 1200, q: 2, a: 0.001, d: 0.03, peak: 0.5 }); }) },
 ];
 
-// 効果音を作る（AudioBuffer、48kHz ステレオ）
+// 一覧: 録音の素材＋合成の書く音
+const SYNTH_USE = { ballpen: 'ボールペン（合成）', marker: 'マーカー（キュッキュッ・合成）', signpen: 'サインペン（合成）', brush: '筆（スーッ・合成）' };
+export const SFX_GENRES = GENRES;
+export const SFX = [
+  ...SFX_LIB,
+  ...SYNTH.filter((x) => SYNTH_USE[x.key]).map((x) => ({ ...x, g: '書く音・紙', label: SYNTH_USE[x.key], synth: true })),
+];
+
+// 効果音をファイルにする（追加すると普通の音声ファイルと同じように保存・書き出しされる）
+export async function sfxFile(s) {
+  if (s.synth) return new File([bufferToWav(await renderSfx(s.key))], s.label + '.wav', { type: 'audio/wav' });
+  const res = await fetch('sfx/' + s.key + '.mp3');
+  if (!res.ok) throw new Error('効果音を読み込めませんでした');
+  return new File([await res.blob()], s.label + '.mp3', { type: 'audio/mpeg' });
+}
+
+// 合成の効果音を作る（AudioBuffer、48kHz ステレオ）
 export async function renderSfx(key) {
-  const s = SFX.find((x) => x.key === key);
+  const s = SYNTH.find((x) => x.key === key);
   const ctx = new OfflineAudioContext(2, Math.ceil(s.dur * SR), SR);
   const master = ctx.createGain();
   master.gain.value = 0.9;

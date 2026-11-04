@@ -16,7 +16,7 @@ import { drawMain, TRANSITIONS, MOTIONS } from './compose.js';
 import { COLOR_PRESETS, defaultColor, defaultChroma, applyColorPreset, colorActive, edgeColor } from './gl.js';
 import { resolveKf } from './render.js';
 import { POP_TEMPLATES, popTemplate, drawPopText } from './poptext.js';
-import { SFX, SFX_GENRES, renderSfx, bufferToWav } from './sfx.js';
+import { SFX, SFX_GENRES, sfxFile } from './sfx.js';
 import { putProject, getProject, listProjects, putFile, getFile, deleteFile, deleteProject, deleteAllProjects, storageInfo, requestPersist, putStamp, deleteStamp, listStamps } from './store.js';
 
 const $ = (id) => document.getElementById(id);
@@ -1945,14 +1945,15 @@ function buildSfx(body) {
     }
   };
   body.append(chips({ scroll: true, options: SFX_GENRES.map((g) => ({ v: g, label: g })), get: () => sfxGenre, set: (g) => { sfxGenre = g; draw(); } }), list,
-    h('p', { class: 'lbl' }, '▶で試聴、＋追加で再生位置に置きます。音はアプリの中で作っているので、著作権を気にせず使えます。書く音などは追加するたびに少しずつ違う音になります。'));
+    h('p', { class: 'lbl' }, '▶で試聴、＋追加で再生位置に置きます。録音の素材はすべて CC0（自由に使える素材）なので、動画に入れて公開しても大丈夫です。素材の提供: Kenney、rubberduck ほか OpenGameArt.org の作者のみなさん。「合成」と付いた音はアプリの中で作った音です。'));
   draw();
 }
 let sfxPlaying = null;
 async function previewSfx(key) {
   const ctx = ensureAudioCtx();
   try { sfxPlaying?.stop(); } catch {}
-  const buf = await renderSfx(key);
+  const s = SFX.find((x) => x.key === key);
+  const buf = await ctx.decodeAudioData(await (await sfxFile(s)).arrayBuffer());
   const src = ctx.createBufferSource();
   src.buffer = buf;
   src.connect(ctx.destination);
@@ -1960,8 +1961,8 @@ async function previewSfx(key) {
   sfxPlaying = src;
 }
 async function addSfx(s) {
-  const buf = await renderSfx(s.key);
-  const file = new File([bufferToWav(buf)], s.label + '.wav', { type: 'audio/wav' });
+  let file;
+  try { file = await sfxFile(s); } catch (e) { toast(e.message + '（ネットにつながっているか確認してください）', 3000); return; }
   const a = await addAudioFile(file, 'sfx', s.label);
   if (a) { renderTimeline(); toast(`「${s.label}」を追加しました`, 1800); }
 }

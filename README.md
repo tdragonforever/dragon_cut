@@ -19,3 +19,4 @@
 
 - [Mediabunny](https://mediabunny.dev/)（MPL-2.0）: `js/vendor/mediabunny.LICENSE`
 - ロゴ用フォント Syne（SIL Open Font License）
+- 効果音: CC0 の素材（Kenney ほか OpenGameArt.org の作者）。出典は `sfx/CREDITS.txt`

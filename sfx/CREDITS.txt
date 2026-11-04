@@ -1,0 +1,22 @@
+DraCut の効果音（sfx/ フォルダ）の出典
+
+すべて CC0（Creative Commons Zero / パブリックドメイン）の素材です。
+誰でも自由に使え、改変・再配布もできます（クレジットの表記は必須ではありませんが、感謝を込めて記載します）。
+各素材は音量をそろえ、先頭の無音を削り、MP3 に変換しています。
+
+OpenGameArt.org（https://opengameart.org/）より:
+- Kenney（www.kenney.nl）: Interface Sounds / 51 UI sound effects / 63 Digital sound effects / 85 Short music jingles / 50 RPG sound effects
+- rubberduck: 75 CC0 breaking / falling / hit sfx, 80 CC0 RPG SFX
+- artisticdude: Swishes Sound Pack
+- pwl: Bell dings/chimes
+- starninjas: 4 Metal Dings/Rings
+- wubitog: 3 Pop Sounds
+- farfadet46: bubbles 'pop'
+- antumdeluge: Balloon Sounds
+- haeldb: Completion sound
+- pyranostudios: Air whoosh
+- sinny: drawing with chalk
+- themightyglider: Camera
+- expl0it3r: Applause in a large hall or church
+- Unicae Games: Keyboard Soundpack #1
+- Pencil Sounds（NachtmahrTV / damsur, Freesound.org より）
