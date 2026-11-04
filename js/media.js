@@ -40,6 +40,7 @@ export async function openVideo(file) {
       height: vt.displayHeight,
       duration: duration - first,
       fps,
+      bitrate: stats.averageBitrate || 0,
       codec: vt.codec,
       hasAudio: !!at,
       hdr: await isHdr(vt),
@@ -138,9 +139,23 @@ class MemoryFile {
 }
 
 // 高画質: iPhone のカメラと同じくらい（4K30 の H.264 で約 47Mbps）、最高画質: その約1.6倍
-export function bitrateFor(w, h, fps, codec, quality) {
+// srcs を渡すと、元の動画のビットレートも考えに入れる（元より少ないデータ量で書き出して画質が落ちないように）
+export function bitrateFor(w, h, fps, codec, quality, srcs) {
   const bpp = (quality === 'max' ? 0.3 : 0.19) * (codec === 'hevc' ? 0.6 : 1);
-  return Math.round(Math.min(160e6, w * h * fps * bpp));
+  const floor = srcBitrateFloor(srcs, w, h, codec) * (quality === 'max' ? 1.5 : 1);
+  return Math.round(Math.min(160e6, Math.max(w * h * fps * bpp, floor)));
+}
+// 元の動画と同じくらいの画質に必要なビットレート。HEVC などの効率のよい形式から H.264 にするときは多めに要る
+function srcBitrateFloor(srcs, w, h, codec) {
+  let r = 0;
+  for (const s of srcs ? srcs.values() : []) {
+    const i = s.info;
+    if (!i || !i.bitrate || !i.width || !i.height) continue;
+    const efficient = /hevc|vp9|av1/.test(i.codec || '');
+    const k = codec === 'avc' ? (efficient ? 1.7 : 1.15) : (efficient ? 1.15 : 0.8);
+    r = Math.max(r, i.bitrate * k * Math.min(1, (w * h) / (i.width * i.height)));
+  }
+  return r;
 }
 
 export async function detectEncoders(w, h, fps, extra = []) {
@@ -239,14 +254,41 @@ function isBlack(draw) {
 }
 // 書き出しの前に、WebCodecs で取り出したコマがちゃんと描けるか確かめる。
 // 失敗する・真っ黒になるのに <video> では映る（iPhone の HDR・ドルビービジョンの 4K など）なら、<video> で取り出す方を使う
+// 小さく描いた2つの絵の、色の違いの平均（0〜255）
+function pixelsOf(draw, w = 48, h = 48) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = '#000'; g.fillRect(0, 0, w, h);
+  try { draw(g, w, h); } catch { return null; }
+  return g.getImageData(0, 0, w, h).data;
+}
+function colorDiff(a, b) {
+  let s = 0, n = 0;
+  for (let i = 0; i < a.length; i += 4) { s += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]); n += 3; }
+  return s / n;
+}
 async function sinkUsable(src, t) {
   const m = src.media;
   if (!m.canDecodeVideo) return false;
-  let sinkBlack = true;
+  let sinkBlack = true, sinkPx = null;
   try {
     const sm = await new VideoSampleSink(m.videoTrack).getSample(m.firstTimestamp + t);
-    if (sm) { sinkBlack = isBlack((g) => sm.draw(g, 0, 0, 24, 24)); sm.close(); }
+    if (sm) { sinkBlack = isBlack((g) => sm.draw(g, 0, 0, 24, 24)); sinkPx = pixelsOf((g, w, h) => sm.draw(g, 0, 0, w, h)); sm.close(); }
   } catch (e) { console.warn('sink probe', e); }
+  // HDR（10bit）の動画は、取り出したコマの色がプレビュー（<video>）と大きく違う（暗い・色が飛ぶ・段差が出る）ことがある。
+  // その場合は、プレビューと同じ見た目になる <video> での取り出しを使う
+  if (!sinkBlack && src.info.hdr && sinkPx) {
+    const r = elementReader(src.file, [t]);
+    try {
+      const { value } = await r.next();
+      const elPx = value && pixelsOf((g, w, h) => value.draw(g, 0, 0, w, h));
+      if (elPx && !isBlack((g) => value.draw(g, 0, 0, 24, 24))) {
+        const d = colorDiff(sinkPx, elPx);
+        console.info('HDR probe diff', d.toFixed(1));
+        if (d > 14) return false;
+      }
+    } catch {} finally { await r.return(); }
+  }
   if (!sinkBlack) return true;
   // 元の動画がもともと真っ黒な場面かもしれないので、<video> 側でも見て比べる
   const r = elementReader(src.file, [t]);
@@ -311,7 +353,7 @@ export async function exportVideo({ srcs, proj, buffers, overlayMedia = new Map(
   const ctx = canvas.getContext('2d', { alpha: false });
   const videoSource = new CanvasSource(canvas, {
     codec,
-    bitrate: bitrateFor(W, H, fps, codec, settings.quality),
+    bitrate: bitrateFor(W, H, fps, codec, settings.quality, srcs),
     keyFrameInterval: 2,
   });
   output.addVideoTrack(videoSource, { frameRate: fps });

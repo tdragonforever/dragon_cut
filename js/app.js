@@ -3327,8 +3327,8 @@ async function openExport() {
   for (const f of [60, 30, 24]) if (f < srcFps - 1) fpsOpts.push({ v: f, label: f + 'fps' });
   const est = () => {
     const s = outputSize(p, EXP.limit);
-    const br = bitrateFor(s.w, s.h, EXP.fps, EXP.codec, EXP.quality);
-    const hi = bitrateFor(s.w, s.h, EXP.fps, EXP.codec, 'high'), mx = bitrateFor(s.w, s.h, EXP.fps, EXP.codec, 'max');
+    const br = bitrateFor(s.w, s.h, EXP.fps, EXP.codec, EXP.quality, S.srcs);
+    const hi = bitrateFor(s.w, s.h, EXP.fps, EXP.codec, 'high', S.srcs), mx = bitrateFor(s.w, s.h, EXP.fps, EXP.codec, 'max', S.srcs);
     const mb = ((br + 256000) * dur()) / 8 / 1e6;
     $('expEstimate').textContent = `${s.w}×${s.h}・${+EXP.fps.toFixed(2)}fps・約${Math.round(br / 1e6)}Mbps・予想サイズ 約${mb < 10 ? mb.toFixed(1) : Math.round(mb)}MB（${fmt(dur())}）`
       + `\nビットレート＝1秒あたりのデータ量。高＝スマホのカメラと同じくらい（約${Math.round(hi / 1e6)}Mbps）、最高＝その約1.6倍（約${Math.round(mx / 1e6)}Mbps）。細かい模様や動きの激しい場面で差が出ます。`;
