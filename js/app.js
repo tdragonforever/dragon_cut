@@ -1890,12 +1890,18 @@ function buildSpeed(body) {
 
 // --- 切り抜き ---
 // --- ポップ文字（Demo） ---
+// 見本の文字が枠いっぱいに入る大きさ（横幅は全角1文字＝文字の大きさとして計算）
+function popCardSize(text, W, H) {
+  const lines = text.split('\n');
+  const len = Math.max(...lines.map((l) => Array.from(l).reduce((a, ch) => a + (ch.charCodeAt(0) < 256 ? 0.62 : 1), 0)));
+  return Math.min((0.78 * W) / len, (0.62 * H) / (lines.length * 1.22)) / Math.min(W, H);
+}
 // テンプレートを選ぶと、再生位置に文字を置く。見本は動かして見せる
 function buildPop(body) {
   body.append(h('p', { class: 'demo-note' }, '動作確認未実施'));
   const grid = h('div', { class: 'pop-grid' });
   const cards = POP_TEMPLATES.map((tp) => {
-    const cv = h('canvas', { width: 300, height: 120 });
+    const cv = h('canvas', { width: 300, height: 180 });
     const card = h('button', { class: 'pop-card', onclick: () => addPopText(tp.key) }, cv, h('span', {}, tp.label));
     grid.append(card);
     ensureFont(tp.font, tp.sample).then(() => {});
@@ -1909,7 +1915,7 @@ function buildPop(body) {
     for (const { tp, cv } of cards) {
       const g = cv.getContext('2d');
       g.clearRect(0, 0, cv.width, cv.height);
-      drawPopText(g, { text: tp.sample, tpl: tp.key, font: tp.font, size: 0.34, x: 0.5, y: 0.5, rot: 0, start: 0, end: 3.4 }, cv.width, cv.height, t);
+      drawPopText(g, { text: tp.sample, tpl: tp.key, font: tp.font, size: popCardSize(tp.sample, cv.width, cv.height), x: 0.5, y: 0.5, rot: 0, start: 0, end: 3.4 }, cv.width, cv.height, t);
     }
     requestAnimationFrame(loop);
   };
