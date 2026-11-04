@@ -15,6 +15,8 @@ import { openCutout } from './cutout.js';
 import { drawMain, TRANSITIONS, MOTIONS } from './compose.js';
 import { COLOR_PRESETS, defaultColor, defaultChroma, applyColorPreset, colorActive, edgeColor } from './gl.js';
 import { resolveKf } from './render.js';
+import { POP_TEMPLATES, popTemplate, drawPopText } from './poptext.js';
+import { SFX, SFX_GENRES, renderSfx, bufferToWav } from './sfx.js';
 import { putProject, getProject, listProjects, putFile, getFile, deleteFile, deleteProject, deleteAllProjects, storageInfo, requestPersist, putStamp, deleteStamp, listStamps } from './store.js';
 
 const $ = (id) => document.getElementById(id);
@@ -1003,7 +1005,7 @@ function renderTimeline() {
   lanesFor(p.overlays, 'overlay', 'overlay', ROW.overlay, (o) => (o.type === 'video' ? '🎞 ' : '🖼 ') + o.name,
     (o) => { const m = S.ovMedia.get(o.mediaId); return [m && m.thumb ? h('img', { class: 'ov-thumb', src: m.thumb }) : null, ...kfDots(o)]; });
   lanesFor(p.texts, 'text', 'text', ROW.text, (c) => 'T ' + c.text.replace(/\n/g, ' '), (c) => kfDots(c));
-  lanesFor(p.audios, 'audio', (a) => (a.kind === 'tts' ? 'tts' : 'audio'), ROW.audio, (a) => (a.afx && a.afx.on ? '🎚' : '') + (a.kind === 'tts' ? '🗣 ' : '♪ ') + a.name,
+  lanesFor(p.audios, 'audio', (a) => (a.kind === 'tts' ? 'tts' : 'audio'), ROW.audio, (a) => (a.afx && a.afx.on ? '🎚' : '') + (a.kind === 'tts' ? '🗣 ' : a.kind === 'sfx' ? '🔔 ' : '♪ ') + a.name,
     (a, w) => { const pk = S.peaks.get(a.id); return pk ? waveCanvas(pk, a.offset, a.offset + (a.end - a.start), w) : null; });
 
   if (!p.texts.length && !p.audios.length && !p.effects.length && !p.overlays.length) {
@@ -1474,8 +1476,8 @@ function openPanel(name, title) {
   const body = $('panelBody');
   body.innerHTML = '';
   body.scrollTop = 0;
-  const builders = { lite: buildLite, ratio: buildRatio, speed: buildSpeed, volume: buildVolume, crop: buildCrop, tts: buildTts, effectPick: buildEffectPick, audio: buildAudioFx, color: buildColorPanel, trans: buildTransPanel, stamps: buildStamps };
-  const titles = { lite: '軽量化（Demo）', ratio: '比率（出来上がりの縦横比）', speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ（Demo）', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
+  const builders = { sfx: buildSfx, pop: buildPop, lite: buildLite, ratio: buildRatio, speed: buildSpeed, volume: buildVolume, crop: buildCrop, tts: buildTts, effectPick: buildEffectPick, audio: buildAudioFx, color: buildColorPanel, trans: buildTransPanel, stamps: buildStamps };
+  const titles = { sfx: '効果音（Demo）', pop: 'ポップ文字（Demo）', lite: '軽量化（Demo）', ratio: '比率（出来上がりの縦横比）', speed: '速度', volume: '音量バランス', crop: '切り抜き', tts: '読み上げ（Demo）', effectPick: 'エフェクトを追加', audio: '音声補正', color: 'フィルター・動き', trans: 'トランジション', stamps: 'スタンプ' };
   $('panelTitle').textContent = title || titles[name] || '';
   $('panelDone').textContent = name === 'stamps' ? '閉じる' : '完了';
   if (builders[name]) {
@@ -1612,6 +1614,13 @@ function buildText(body, c) {
   ta.addEventListener('input', () => { c.text = ta.value; ensureFont(c.font, c.text).then(requestDraw); requestDraw(); });
   ta.addEventListener('change', () => { commit(); renderTimeline(); });
   body.append(sec('', ta));
+  if (c.tpl) {
+    body.append(sec('ポップ文字（Demo）',
+      chips({ scroll: true, options: POP_TEMPLATES.map((x) => ({ v: x.key, label: x.label })), get: () => c.tpl,
+        set: (k) => { c.tpl = k; c.font = popTemplate(k).font; ensureFont(c.font, c.text).then(requestDraw); } }),
+      h('p', { class: 'lbl' }, '色・縁・動きはテンプレートで決まります（下の文字のスタイルは効きません）。大きさ・位置・回転は変えられます。'),
+      h('button', { class: 'wide', onclick: () => { delete c.tpl; commit(); openItemPanel('text', c.id); } }, 'ふつうの文字にする')));
+  }
 
   const presetBox = h('div');
   const drawPresets = () => {
@@ -1880,6 +1889,83 @@ function buildSpeed(body) {
 }
 
 // --- 切り抜き ---
+// --- ポップ文字（Demo） ---
+// テンプレートを選ぶと、再生位置に文字を置く。見本は動かして見せる
+function buildPop(body) {
+  body.append(h('p', { class: 'demo-note' }, '動作確認未実施'));
+  const grid = h('div', { class: 'pop-grid' });
+  const cards = POP_TEMPLATES.map((tp) => {
+    const cv = h('canvas', { width: 300, height: 120 });
+    const card = h('button', { class: 'pop-card', onclick: () => addPopText(tp.key) }, cv, h('span', {}, tp.label));
+    grid.append(card);
+    ensureFont(tp.font, tp.sample).then(() => {});
+    return { tp, cv };
+  });
+  body.append(grid, h('p', { class: 'lbl' }, 'タップすると再生位置に追加します。文字はあとから変えられます。'));
+  const t0 = performance.now();
+  const loop = () => {
+    if (S.panel !== 'pop' || !grid.isConnected) return;
+    const t = ((performance.now() - t0) / 1000) % 3;
+    for (const { tp, cv } of cards) {
+      const g = cv.getContext('2d');
+      g.clearRect(0, 0, cv.width, cv.height);
+      drawPopText(g, { text: tp.sample, tpl: tp.key, font: tp.font, size: 0.34, x: 0.5, y: 0.5, rot: 0, start: 0, end: 3.4 }, cv.width, cv.height, t);
+    }
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+async function addPopText(key) {
+  const tp = popTemplate(key);
+  const start = clamp(S.t, 0, Math.max(0, dur() - 0.5));
+  const len = Math.min(3, Math.max(0.5, dur() - start));
+  const c = newTextClip(start, len, { text: tp.sample, tpl: key, font: tp.font, size: 0.1, y: 0.5, anim: 'none' });
+  S.proj.texts.push(c);
+  await ensureFont(c.font, c.text).catch(() => {});
+  commit();
+  openItemPanel('text', c.id);
+  const ta = $('panelBody').querySelector('textarea');
+  if (ta) { ta.focus(); ta.select(); }
+}
+
+// --- 効果音（Demo） ---
+// その場で合成した効果音を、ジャンルから選んで再生位置に追加する
+let sfxGenre = SFX_GENRES[0];
+function buildSfx(body) {
+  body.append(h('p', { class: 'demo-note' }, '動作確認未実施'));
+  const list = h('div', { class: 'sfx-list' });
+  const draw = () => {
+    list.innerHTML = '';
+    for (const s of SFX.filter((x) => x.g === sfxGenre)) {
+      list.append(h('div', { class: 'sfx-row' },
+        h('button', { class: 'sfx-play', 'aria-label': '試聴', onclick: () => previewSfx(s.key) }, '▶'),
+        h('span', { class: 'sfx-name' }, s.label),
+        h('span', { class: 'lbl' }, s.dur.toFixed(1) + '秒'),
+        h('button', { class: 'chip', onclick: () => addSfx(s) }, '＋追加')));
+    }
+  };
+  body.append(chips({ scroll: true, options: SFX_GENRES.map((g) => ({ v: g, label: g })), get: () => sfxGenre, set: (g) => { sfxGenre = g; draw(); } }), list,
+    h('p', { class: 'lbl' }, '▶で試聴、＋追加で再生位置に置きます。音はアプリの中で作っているので、著作権を気にせず使えます。書く音などは追加するたびに少しずつ違う音になります。'));
+  draw();
+}
+let sfxPlaying = null;
+async function previewSfx(key) {
+  const ctx = ensureAudioCtx();
+  try { sfxPlaying?.stop(); } catch {}
+  const buf = await renderSfx(key);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start();
+  sfxPlaying = src;
+}
+async function addSfx(s) {
+  const buf = await renderSfx(s.key);
+  const file = new File([bufferToWav(buf)], s.label + '.wav', { type: 'audio/wav' });
+  const a = await addAudioFile(file, 'sfx', s.label);
+  if (a) { renderTimeline(); toast(`「${s.label}」を追加しました`, 1800); }
+}
+
 // --- 比率（出来上がりの縦横比） ---
 // 画面（frame）の縦横比を変える。大きさは最初の動画の短い辺に合わせる（拡大しすぎない）
 function setRatio(key) {

@@ -2,6 +2,7 @@
 // 見た目が完全に一致する。
 import { cropRect, bgFill } from './project.js';
 import { fontString } from './fonts.js';
+import { drawPopText, popBounds } from './poptext.js';
 import { glProc, colorActive, chromaActive } from './gl.js';
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
@@ -145,6 +146,7 @@ function animState(c, t) {
 
 // 文字の外枠（縁を含む）を返す。プレビューでの選択枠とタップ判定に使う
 export function textBounds(ctx, c, W, H) {
+  if (c.tpl) return popBounds(ctx, c, W, H);
   const base = Math.min(W, H);
   const px = c.size * base;
   ctx.save();
@@ -160,6 +162,7 @@ export function textBounds(ctx, c, W, H) {
 
 export function drawText(ctx, c, W, H, t) {
   if (!c.text) return;
+  if (c.tpl) { drawPopText(ctx, c, W, H, t); return; } // ポップ文字（Demo）
   const a = t == null ? { alpha: 1, scale: 1, dy: 0, chars: Infinity } : animState(c, t);
   if (a.alpha <= 0) return;
   const base = Math.min(W, H);

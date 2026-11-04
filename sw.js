@@ -6,7 +6,7 @@ importScripts('js/version.js');
 const APP = 'app-' + self.DRACUT_VERSION.ver;
 const FONTS = 'fonts-v1';
 const SHELL = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'fonts/syne-800-dracut.woff2',
-  'js/app.js', 'js/project.js', 'js/render.js', 'js/fonts.js', 'js/audio.js', 'js/media.js', 'js/dsp.js', 'js/fx-worklet.js', 'js/fx-worker.js', 'js/gl.js', 'js/compose.js', 'js/store.js', 'js/version.js', 'js/cutout.js', 'js/vendor/mediabunny.min.mjs'];
+  'js/app.js', 'js/project.js', 'js/render.js', 'js/fonts.js', 'js/audio.js', 'js/media.js', 'js/dsp.js', 'js/fx-worklet.js', 'js/fx-worker.js', 'js/gl.js', 'js/compose.js', 'js/store.js', 'js/version.js', 'js/cutout.js', 'js/poptext.js', 'js/sfx.js', 'js/vendor/mediabunny.min.mjs'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(APP).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
